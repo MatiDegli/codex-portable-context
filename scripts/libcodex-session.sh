@@ -139,6 +139,25 @@ mirror_entry_title() {
   jq -r '.title // ("Session " + .session_id)' <<< "${entry_json}"
 }
 
+mirror_entry_session_id() {
+  local entry_json="$1"
+
+  jq -r '.session_id' <<< "${entry_json}"
+}
+
+mirror_entry_brief_label() {
+  local entry_json="$1"
+  local title
+  local session_id
+  local short_id
+
+  title="$(mirror_entry_title "${entry_json}")"
+  session_id="$(mirror_entry_session_id "${entry_json}")"
+  short_id="${session_id:0:8}"
+
+  printf '%s (%s)\n' "${title}" "${short_id}"
+}
+
 mirror_entry_path() {
   local out_dir="$1"
   local kind="$2"

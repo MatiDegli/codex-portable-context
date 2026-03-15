@@ -17,6 +17,12 @@ usage() {
 Usage: ${SCRIPT_NAME} [--out-dir PATH] [--metadata] [--print]
 
 Open or print the most recent exported session from the derived mirror.
+
+Examples:
+  ${SCRIPT_NAME}
+  ${SCRIPT_NAME} --print
+  ${SCRIPT_NAME} --metadata
+  ${SCRIPT_NAME} --metadata --print
 EOF
 }
 
@@ -71,5 +77,7 @@ if [[ "${print_only}" == "true" ]]; then
   printf '%s\n' "${target_path}"
   exit 0
 fi
+
+printf 'Opening latest %s: %s\n' "${target_kind}" "$(mirror_entry_brief_label "${entry_json}")" >&2
 
 mirror_open_file "${target_path}"

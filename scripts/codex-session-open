@@ -20,6 +20,13 @@ usage() {
 Usage: ${SCRIPT_NAME} [--out-dir PATH] [--metadata] [--print] [--landing | --latest | <session-id-or-prefix>]
 
 Open or print a derived Markdown or metadata file from the exported mirror.
+
+Examples:
+  ${SCRIPT_NAME} --landing
+  ${SCRIPT_NAME} --latest
+  ${SCRIPT_NAME} --latest --metadata --print
+  ${SCRIPT_NAME} 019cef3a
+  ${SCRIPT_NAME} 019cef3a --metadata --print
 EOF
 }
 
@@ -71,6 +78,7 @@ if [[ "${open_landing}" == "true" && "${target_kind}" == "metadata" ]]; then
 fi
 
 if [[ "${open_landing}" == "false" && "${open_latest}" == "false" && -z "${selector}" ]]; then
+  printf 'Choose one of: --landing, --latest, or a session id/prefix.\n' >&2
   usage >&2
   exit 1
 fi
@@ -110,6 +118,12 @@ fi
 if [[ "${print_only}" == "true" ]]; then
   printf '%s\n' "${target_path}"
   exit 0
+fi
+
+if [[ "${open_landing}" == "true" ]]; then
+  printf 'Opening mirror landing: %s\n' "${target_path}" >&2
+else
+  printf 'Opening %s: %s\n' "${target_kind}" "$(mirror_entry_brief_label "${entry_json}")" >&2
 fi
 
 mirror_open_file "${target_path}"

@@ -109,6 +109,8 @@ These commands are convenience helpers only. They do not search raw Codex state,
 
 `codex-session-list --summary --details` is the most reader-friendly terminal view: it keeps the normal list output, then adds the exported preview, activity, and environment lines beneath each matching session.
 
+`codex-session-open --help` and `codex-session-latest --help` also include short examples now, so the common open and print flows are discoverable without reading the repo docs first.
+
 ## Exported Index Contract
 
 The helpers assume `sessions-index.jsonl` exposes at least:

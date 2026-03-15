@@ -121,7 +121,10 @@ Examples:
 ./scripts/codex-session-open 019cef3a --print
 ./scripts/codex-session-open --metadata 019cef3a --print
 ./scripts/codex-session-latest --print
+./scripts/codex-session-latest --metadata --print
 ```
+
+Both `codex-session-open --help` and `codex-session-latest --help` now include short built-in examples so the common open/print flows are easier to discover from the terminal.
 
 ## Export Quality
 
