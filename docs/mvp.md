@@ -61,7 +61,7 @@ It also now includes lightweight convenience helpers that read only the derived 
 
 Supported convenience flags are intentionally small:
 
-- `codex-session-list`: `--limit`, `--latest`, `--title`, `--id`, `--json`
+- `codex-session-list`: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--json`
 - `codex-session-open`: `--metadata`, `--print`, `--out-dir`
 - `codex-session-latest`: `--metadata`, `--print`, `--out-dir`
 
@@ -72,6 +72,8 @@ The new profile flags make the reading view more practical without changing the 
 Repeated runs now reuse unchanged per-session derived outputs when possible. The exporter still rebuilds the combined index and removes stale derived files when source sessions disappear.
 
 The lookup helpers are convenience commands only. They do not search raw Codex state, they do not resume sessions, and they do not introduce any write-back behavior.
+
+The exporter now also includes a small derived `summary` object in per-session metadata and in `sessions-index.jsonl`. It is mechanical rather than generative and is meant for quick scanning of recent sessions.
 
 ## Suggested First Outputs
 
@@ -90,6 +92,7 @@ The lookup helpers assume `sessions-index.jsonl` exposes at least:
 - `session_timestamp`
 - `metadata_relpath`
 - `markdown_relpath`
+- `summary.one_line` for the optional summary view in `codex-session-list`
 
 For older mirror outputs, helper path resolution falls back to `metadata/<session-id>.json` and `sessions/<session-id>.md`.
 
@@ -106,6 +109,5 @@ For older mirror outputs, helper path resolution falls back to `metadata/<sessio
 ## Future Extensions
 
 - more selective redaction options
-- summary generation
 - safe transport recipes for Syncthing or `rsync`
-- session lookup helpers
+- lightweight export polish that stays deterministic

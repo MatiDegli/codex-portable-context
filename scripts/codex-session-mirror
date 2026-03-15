@@ -4,7 +4,7 @@
 set -euo pipefail
 
 readonly SCRIPT_NAME="$(basename "$0")"
-readonly EXPORT_FORMAT_VERSION="4"
+readonly EXPORT_FORMAT_VERSION="5"
 
 codex_home="${CODEX_HOME:-$HOME/.codex}"
 source_dir=""
@@ -277,7 +277,108 @@ write_metadata() {
     --argjson include_tools "$( [[ "${include_tools}" == "true" ]] && printf 'true' || printf 'false' )" \
     --argjson include_events "$( [[ "${include_events}" == "true" ]] && printf 'true' || printf 'false' )" \
     '
+      def clean_excerpt($value; $max_length):
+        ($value // "")
+        | gsub("[[:space:]]+"; " ")
+        | sub("^ "; "")
+        | sub(" $"; "")
+        | if . == "" then
+            null
+          elif (length > $max_length) then
+            .[0:($max_length - 3)] + "..."
+          else
+            .
+          end;
+
+      def path_tail($value):
+        if ($value // "") == "" then
+          null
+        else
+          ($value | split("/") | last)
+        end;
+
       (map(select(.type == "session_meta")) | first | .payload // {}) as $meta
+      | (
+          map(
+            select(.type == "response_item" and .payload.type == "message" and .payload.role != "assistant")
+          )
+        ) as $context_entries
+      | (
+          map(
+            select(.type == "event_msg" and .payload.type == "user_message")
+            | (.payload.message // "")
+            | clean_excerpt(.; 140)
+          )
+          | map(select(. != null))
+        ) as $user_messages
+      | (
+          map(
+            select(.type == "event_msg" and .payload.type == "agent_message")
+            | (.payload.message // "")
+            | clean_excerpt(.; 140)
+          )
+          | map(select(. != null))
+        ) as $assistant_messages
+      | (
+          map(select(.type == "response_item" and .payload.type == "function_call"))
+        ) as $tool_calls
+      | (
+          map(select(.type == "response_item" and .payload.type == "function_call_output"))
+        ) as $tool_outputs
+      | (
+          map(
+            select(
+              .type == "event_msg"
+              and (
+                .payload.type == "task_started"
+                or .payload.type == "task_complete"
+                or .payload.type == "thread_rolled_back"
+                or .payload.type == "turn_aborted"
+              )
+            )
+          )
+        ) as $notable_events
+      | ($context_entries | length) as $context_entry_count
+      | ($user_messages | length) as $user_message_count
+      | ($assistant_messages | length) as $assistant_message_count
+      | ($tool_calls | length) as $tool_call_count
+      | ($tool_outputs | length) as $tool_output_count
+      | ($notable_events | length) as $notable_event_count
+      | (
+          (
+            ($user_message_count | tostring) + " user, "
+            + ($assistant_message_count | tostring) + " assistant, "
+            + ($tool_call_count | tostring) + " tool calls, "
+            + ($tool_output_count | tostring) + " tool outputs"
+            + (
+                if $notable_event_count > 0 then
+                  ", " + ($notable_event_count | tostring) + " notable events"
+                else
+                  ""
+                end
+              )
+          )
+        ) as $activity_summary
+      | (
+          [
+            if (($meta.cwd // "") != "") then
+              "cwd: " + (path_tail($meta.cwd) // $meta.cwd)
+            else
+              empty
+            end,
+            if (($meta.source // "") != "") then
+              "source: " + $meta.source
+            else
+              empty
+            end,
+            if (($meta.originator // "") != "") then
+              "originator: " + $meta.originator
+            else
+              empty
+            end
+          ]
+          | if length == 0 then null else join(", ") end
+        ) as $environment_summary
       | {
           session_id: $session_id,
           title: $title,
@@ -301,41 +402,25 @@ write_metadata() {
             tools: $include_tools,
             events: $include_events
           },
+          summary: {
+            first_user_message: ($user_messages | first // null),
+            last_user_message: ($user_messages | last // null),
+            last_assistant_message: ($assistant_messages | last // null),
+            activity: $activity_summary,
+            environment: $environment_summary,
+            one_line: (
+              [$activity_summary, $environment_summary]
+              | map(select(. != null and . != ""))
+              | if length == 0 then null else join(" | ") end
+            )
+          },
           event_count: length,
-          context_entry_count: (
-            map(
-              select(
-                .type == "response_item"
-                and .payload.type == "message"
-                and .payload.role != "assistant"
-              )
-            ) | length
-          ),
-          user_message_count: (
-            map(select(.type == "event_msg" and .payload.type == "user_message")) | length
-          ),
-          assistant_message_count: (
-            map(select(.type == "event_msg" and .payload.type == "agent_message")) | length
-          ),
-          tool_call_count: (
-            map(select(.type == "response_item" and .payload.type == "function_call")) | length
-          ),
-          tool_output_count: (
-            map(select(.type == "response_item" and .payload.type == "function_call_output")) | length
-          ),
-          notable_event_count: (
-            map(
-              select(
-                .type == "event_msg"
-                and (
-                  .payload.type == "task_started"
-                  or .payload.type == "task_complete"
-                  or .payload.type == "thread_rolled_back"
-                  or .payload.type == "turn_aborted"
-                )
-              )
-            ) | length
-          ),
+          context_entry_count: $context_entry_count,
+          user_message_count: $user_message_count,
+          assistant_message_count: $assistant_message_count,
+          tool_call_count: $tool_call_count,
+          tool_output_count: $tool_output_count,
+          notable_event_count: $notable_event_count,
           markdown_filter_rules: [
             "Routine token_count events are omitted from Markdown.",
             "turn_context records are omitted from Markdown.",

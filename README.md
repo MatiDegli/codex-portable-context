@@ -204,7 +204,7 @@ The repo now includes small convenience CLIs that operate only on the derived mi
 
 - `./scripts/codex-session-list`
   Lists exported sessions from `out/sessions-index.jsonl`.
-  Useful flags: `--limit`, `--latest`, `--title`, `--id`, `--json`.
+  Useful flags: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--json`.
 - `./scripts/codex-session-open <session-id-or-prefix>`
   Opens the derived Markdown export for one exported session.
   Useful flags: `--metadata`, `--print`, `--out-dir`.
@@ -239,6 +239,7 @@ They currently rely on these exported fields:
 - `session_timestamp`
 - `metadata_relpath`
 - `markdown_relpath`
+- `summary.one_line` for the optional `--summary` view in `codex-session-list`
 
 For compatibility with older mirror outputs, the helpers can fall back to:
 
@@ -247,14 +248,28 @@ For compatibility with older mirror outputs, the helpers can fall back to:
 
 That fallback is only for path resolution. The helpers still operate exclusively on derived files under `out/`.
 
+## Derived Summaries
+
+The exporter now writes a small mechanical per-session summary into metadata and the combined index.
+
+This summary is derived from the exported session content and includes:
+
+- first user message excerpt
+- last user message excerpt
+- last assistant message excerpt
+- an activity line based on message and tool counts
+- a short environment line from exported fields like `cwd`, `source`, and `originator`
+
+It is intentionally deterministic and non-generative. The goal is to make recent sessions easier to scan, not to add an AI summary layer.
+
 ## Planned Follow-Up
 
 The next useful steps are still:
 
-1. Improve the normalized per-session metadata record further.
-2. Add optional redaction refinements without becoming a DLP system.
-3. Add transport recipes without touching credentials.
-4. Keep the convenience helpers small and explicit instead of growing them into a search or resume layer.
+1. Add optional redaction refinements without becoming a DLP system.
+2. Add transport recipes without touching credentials.
+3. Keep the convenience helpers small and explicit instead of growing them into a search or resume layer.
+4. Add more reading-oriented export polish only when it stays deterministic and local-first.
 
 See:
 

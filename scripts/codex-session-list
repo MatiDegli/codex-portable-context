@@ -13,10 +13,11 @@ limit="0"
 title_filter=""
 id_filter=""
 json_mode="false"
+show_summary="false"
 
 usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [--out-dir PATH] [--limit N] [--latest] [--title SUBSTRING] [--id SUBSTRING] [--json]
+Usage: ${SCRIPT_NAME} [--out-dir PATH] [--limit N] [--latest] [--title SUBSTRING] [--id SUBSTRING] [--summary] [--json]
 
 List exported sessions from the derived mirror under out/.
 EOF
@@ -50,6 +51,10 @@ while (($# > 0)); do
       json_mode="true"
       shift
       ;;
+    --summary)
+      show_summary="true"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -79,7 +84,8 @@ entries_json="$(
         . + {
           sort_timestamp: (.updated_at // .session_timestamp // .exported_at // ""),
           display_title: (.title // ("Session " + .session_id)),
-          markdown_relpath: (.markdown_relpath // ("sessions/" + .session_id + ".md"))
+          markdown_relpath: (.markdown_relpath // ("sessions/" + .session_id + ".md")),
+          summary_line: (.summary.one_line // null)
         }
       )
       | map(
@@ -106,12 +112,15 @@ if [[ "${json_mode}" == "true" ]]; then
 fi
 
 printf '%-36s  %-19s  %-44s  %s\n' 'SESSION ID' 'UPDATED' 'TITLE' 'MARKDOWN'
-while IFS=$'\t' read -r session_id updated_at title markdown_relpath; do
+while IFS=$'\t' read -r session_id updated_at title markdown_relpath summary_line; do
   printf '%-36s  %-19s  %-44s  %s\n' \
     "${session_id}" \
     "$(mirror_pretty_timestamp "${updated_at}")" \
     "$(mirror_truncate "${title}" 44)" \
     "${markdown_relpath}"
+  if [[ "${show_summary}" == "true" && -n "${summary_line}" && "${summary_line}" != "null" ]]; then
+    printf '  %s\n' "$(mirror_truncate "${summary_line}" 120)"
+  fi
 done < <(
-  jq -r '.[] | [.session_id, .sort_timestamp, .display_title, .markdown_relpath] | @tsv' <<< "${entries_json}"
+  jq -r '.[] | [.session_id, .sort_timestamp, .display_title, .markdown_relpath, (.summary_line // "")] | @tsv' <<< "${entries_json}"
 )
