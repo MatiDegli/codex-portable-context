@@ -1,4 +1,4 @@
-# codex-sync
+# codex-portable-context
 
 Small local-first tooling scaffold for cross-device Codex session context.
 
