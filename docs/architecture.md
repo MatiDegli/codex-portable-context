@@ -39,6 +39,7 @@ This is the stable export produced by this project for reading, indexing, and cr
 
 The exact format is still open, but the expected shape is something like:
 
+- `.codex-session-mirror-state.jsonl`
 - `sessions-index.jsonl`
 - `metadata/<session-id>.json`
 - `sessions/<session-id>.md`
@@ -46,6 +47,8 @@ The exact format is still open, but the expected shape is something like:
 The initial implementation now follows that shape under a local `out/` directory.
 
 The Markdown export is intentionally more structured than the raw input. It separates conversation content into readable sections instead of mirroring every low-level event line one by one.
+
+The hidden state file exists only to track derived export fingerprints and output paths. It is local mirror bookkeeping, not Codex source state.
 
 ## Direction
 
@@ -78,6 +81,8 @@ Transport is secondary. The mirror should make it possible to use tools like Syn
 The exporter remains read-only with respect to Codex source state. Redaction, when enabled, is applied only to the derived mirror files.
 
 Export profile flags affect only the derived Markdown view. They do not change the source session logs and do not introduce any write-back path into Codex state.
+
+Incremental export is now part of the core local flow. Repeated runs may reuse unchanged per-session artifacts, but the source of truth remains the raw session files under `~/.codex/sessions`.
 
 ## Non-Goals
 

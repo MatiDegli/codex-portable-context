@@ -36,6 +36,7 @@ Only the third layer is a candidate for cross-device transport.
 - never require modifying Codex source files in place
 - never assume concurrent multi-device writers are safe
 - keep the mirror usable as a read-only context layer
+- keep incremental state limited to derived mirror bookkeeping under the output directory
 
 ## Redaction Direction
 

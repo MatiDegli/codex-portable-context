@@ -73,6 +73,7 @@ And writes a derived mirror under:
 
 ```text
 out/
+├── .codex-session-mirror-state.jsonl
 ├── sessions-index.jsonl
 ├── metadata/
 │   └── <session-id>.json
@@ -81,6 +82,8 @@ out/
 ```
 
 This output is read-only derived data for browsing and context recovery. It is not meant to be written back into Codex state.
+
+Repeated runs reuse unchanged per-session exports when possible. The hidden state file in `out/` is local bookkeeping for the derived mirror, not part of Codex source state.
 
 ## Export Quality
 
@@ -178,14 +181,27 @@ Optional flags can trim sections from the Markdown export:
 
 These flags do not modify source session files, and they do not turn the tool into a sync or resume engine. They only control how much of the derived Markdown view is emitted.
 
+## Incremental Export
+
+The exporter now reuses unchanged per-session artifacts by default.
+
+On each run it:
+
+- checks whether a session input still matches the last exported fingerprint
+- re-renders only sessions whose source or export-relevant inputs changed
+- rebuilds `sessions-index.jsonl` from the current derived outputs
+- removes stale per-session mirror files when source sessions disappear or their session ids change
+
+This keeps the mirror read-only with respect to `~/.codex` while making repeated exports much cheaper.
+
 ## Planned Follow-Up
 
 The next useful steps are still:
 
-1. Read `~/.codex/sessions/**/*.jsonl`.
-2. Improve the normalized per-session metadata record further.
-3. Add optional redaction refinements without becoming a DLP system.
-4. Add transport recipes without touching credentials.
+1. Improve the normalized per-session metadata record further.
+2. Add optional redaction refinements without becoming a DLP system.
+3. Add transport recipes without touching credentials.
+4. Add lightweight session lookup helpers without turning the project into a resume engine.
 
 See:
 

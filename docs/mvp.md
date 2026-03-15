@@ -48,6 +48,7 @@ Section filtering:
 
 It currently exports:
 
+- a local state file for incremental derived export reuse
 - a per-session metadata JSON file
 - a combined JSONL index
 - a Markdown transcript view with clearer separation between context, user messages, assistant messages, tool calls, tool outputs, and notable events
@@ -56,11 +57,14 @@ Markdown intentionally omits routine low-value records such as `token_count` and
 
 The new profile flags make the reading view more practical without changing the source of truth. They trim derived Markdown sections only.
 
+Repeated runs now reuse unchanged per-session derived outputs when possible. The exporter still rebuilds the combined index and removes stale derived files when source sessions disappear.
+
 ## Suggested First Outputs
 
 - `out/sessions-index.jsonl`
 - `out/metadata/<session-id>.json`
 - `out/sessions/<session-id>.md`
+- `out/.codex-session-mirror-state.jsonl`
 
 These are now the concrete first outputs of the repo: stable, human-readable, and sync-friendlier than raw local state.
 
@@ -75,7 +79,6 @@ These are now the concrete first outputs of the repo: stable, human-readable, an
 
 ## Future Extensions
 
-- incremental scans
 - more selective redaction options
 - summary generation
 - safe transport recipes for Syncthing or `rsync`
