@@ -9,10 +9,13 @@ codex_home="${CODEX_HOME:-$HOME/.codex}"
 source_dir=""
 output_dir=""
 session_index=""
+redact_mode="false"
+hostname_short=""
+hostname_fqdn=""
 
 usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [--codex-home PATH] [--source-dir PATH] [--output-dir PATH]
+Usage: ${SCRIPT_NAME} [--codex-home PATH] [--source-dir PATH] [--out-dir PATH] [--redact]
 
 Export a read-only mirror of local Codex sessions into a derived output tree.
 EOF
@@ -50,6 +53,70 @@ lookup_session_index_field() {
     "${session_index}" | tail -n 1
 }
 
+derive_session_title() {
+  local file_path="$1"
+  local thread_name="$2"
+  local session_id="$3"
+  local title=""
+
+  if [[ -n "${thread_name}" ]]; then
+    printf '%s\n' "${thread_name}"
+    return 0
+  fi
+
+  title="$(
+    jq -r \
+      'select(.type == "event_msg" and .payload.type == "user_message") | (.payload.message // "")' \
+      "${file_path}" \
+      | sed -n '/[^[:space:]]/{s/[[:space:]]\+/ /g;p;q;}'
+  )"
+
+  if [[ -z "${title}" ]]; then
+    printf 'Session %s\n' "${session_id}"
+    return 0
+  fi
+
+  if [[ "${#title}" -gt 96 ]]; then
+    title="${title:0:93}..."
+  fi
+
+  printf '%s\n' "${title}"
+}
+
+redact_stream() {
+  REDACT_USER="${USER:-}" \
+  REDACT_HOME="${HOME:-}" \
+  REDACT_HOST_SHORT="${hostname_short}" \
+  REDACT_HOST_FQDN="${hostname_fqdn}" \
+  perl -0pe '
+    s{\Q$ENV{REDACT_HOME}\E}{<redacted-home>}g if length($ENV{REDACT_HOME} // q());
+    s{/home/[^/\s]+}{<redacted-home>}g;
+    s{/Users/[^/\s]+}{<redacted-home>}g;
+    s{\b\Q$ENV{REDACT_USER}\E\b}{<redacted-user>}g if length($ENV{REDACT_USER} // q());
+    s{\b\Q$ENV{REDACT_HOST_FQDN}\E\b}{<redacted-host>}g if length($ENV{REDACT_HOST_FQDN} // q());
+    s{@\Q$ENV{REDACT_HOST_SHORT}\E\b}{@<redacted-host>}g if length($ENV{REDACT_HOST_SHORT} // q());
+    s{\b(hostname|host)\s*[:=]\s*\Q$ENV{REDACT_HOST_SHORT}\E\b}{$1: <redacted-host>}gi if length($ENV{REDACT_HOST_SHORT} // q());
+    s{\bsk-[A-Za-z0-9_-]{16,}\b}{<redacted-secret>}g;
+    s{\bgh[pousr]_[A-Za-z0-9]{20,}\b}{<redacted-secret>}g;
+    s{\bgithub_pat_[A-Za-z0-9_]{20,}\b}{<redacted-secret>}g;
+    s{\bAKIA[0-9A-Z]{16}\b}{<redacted-secret>}g;
+    s{\bBearer\s+[A-Za-z0-9._-]{16,}\b}{Bearer <redacted-secret>}g;
+    s{\bxox[baprs]-[A-Za-z0-9-]{10,}\b}{<redacted-secret>}g;
+  '
+}
+
+write_with_optional_redaction() {
+  local temp_path="$1"
+  local target_path="$2"
+
+  if [[ "${redact_mode}" == "true" ]]; then
+    redact_stream < "${temp_path}" > "${target_path}"
+    rm -f "${temp_path}"
+  else
+    mv "${temp_path}" "${target_path}"
+  fi
+}
+
 write_metadata() {
   local file_path="$1"
   local session_id="$2"
@@ -58,18 +125,25 @@ write_metadata() {
   local thread_name="$5"
   local updated_at="$6"
   local exported_at="$7"
+  local title="$8"
+  local temp_path
+
+  temp_path="$(mktemp)"
 
   jq -s \
     --arg session_id "${session_id}" \
+    --arg title "${title}" \
     --arg source_file "${file_path}" \
     --arg source_relpath "${source_relpath}" \
     --arg thread_name "${thread_name}" \
     --arg updated_at "${updated_at}" \
     --arg exported_at "${exported_at}" \
+    --argjson redacted "$( [[ "${redact_mode}" == "true" ]] && printf 'true' || printf 'false' )" \
     '
       (map(select(.type == "session_meta")) | first | .payload // {}) as $meta
       | {
           session_id: $session_id,
+          title: $title,
           thread_name: (if $thread_name == "" then null else $thread_name end),
           exported_at: $exported_at,
           updated_at: (if $updated_at == "" then null else $updated_at end),
@@ -81,68 +155,311 @@ write_metadata() {
           source: ($meta.source // null),
           model_provider: ($meta.model_provider // null),
           cli_version: ($meta.cli_version // null),
+          redacted: $redacted,
           event_count: length,
+          context_entry_count: (
+            map(
+              select(
+                .type == "response_item"
+                and .payload.type == "message"
+                and .payload.role != "assistant"
+              )
+            ) | length
+          ),
           user_message_count: (
             map(select(.type == "event_msg" and .payload.type == "user_message")) | length
           ),
           assistant_message_count: (
             map(select(.type == "event_msg" and .payload.type == "agent_message")) | length
           ),
-          function_call_count: (
+          tool_call_count: (
             map(select(.type == "response_item" and .payload.type == "function_call")) | length
-          )
+          ),
+          tool_output_count: (
+            map(select(.type == "response_item" and .payload.type == "function_call_output")) | length
+          ),
+          notable_event_count: (
+            map(
+              select(
+                .type == "event_msg"
+                and (
+                  .payload.type == "task_started"
+                  or .payload.type == "task_complete"
+                  or .payload.type == "thread_rolled_back"
+                  or .payload.type == "turn_aborted"
+                )
+              )
+            ) | length
+          ),
+          markdown_filter_rules: [
+            "Routine token_count events are omitted from Markdown.",
+            "turn_context records are omitted from Markdown.",
+            "Assistant response_item message wrappers are omitted when agent_message events already carry the readable text.",
+            "Notable lifecycle events are grouped in a separate Markdown section.",
+            "Raw source session files remain the authoritative input."
+          ]
         }
-    ' "${file_path}" > "${metadata_path}"
+    ' "${file_path}" > "${temp_path}"
+
+  write_with_optional_redaction "${temp_path}" "${metadata_path}"
 }
 
 write_markdown() {
   local file_path="$1"
   local session_id="$2"
   local markdown_path="$3"
-  local thread_name="$4"
-  local updated_at="$5"
+  local title="$4"
+  local thread_name="$5"
+  local updated_at="$6"
+  local temp_path
+
+  temp_path="$(mktemp)"
 
   jq -rs \
     --arg session_id "${session_id}" \
+    --arg title "${title}" \
     --arg thread_name "${thread_name}" \
     --arg updated_at "${updated_at}" \
     '
-      (map(select(.type == "session_meta")) | first | .payload // {}) as $meta
+      def pretty_ts($value):
+        if ($value // "") == "" then
+          "unknown"
+        else
+          ($value | sub("\\.[0-9]+Z$"; "Z") | gsub("T"; " "))
+        end;
+
+      def context_body($content):
+        ($content // [])
+        | map(
+            select((.type == "input_text") or (.type == "output_text"))
+            | .text
+          )
+        | join("\n\n");
+
+      def render_text_block($heading; $timestamp; $body):
+        "### " + $heading + "\n\n"
+        + "Timestamp: `" + pretty_ts($timestamp) + "`\n\n"
+        + $body;
+
+      def render_tool_block($heading; $timestamp; $language; $body):
+        "### " + $heading + "\n\n"
+        + "Timestamp: `" + pretty_ts($timestamp) + "`\n\n"
+        + "~~~" + $language + "\n"
+        + (if $body == "" then "_empty_" else $body end)
+        + "\n~~~";
+
+      (reduce .[] as $item (
+        {};
+        if $item.type == "response_item" and $item.payload.type == "function_call" then
+          . + {($item.payload.call_id): ($item.payload.name // "unknown")}
+        else
+          .
+        end
+      )) as $call_names
+
+      | (map(select(.type == "session_meta")) | first | .payload // {}) as $meta
+
+      | (
+          [
+            .[]
+            | select(
+                .type == "response_item"
+                and .payload.type == "message"
+                and .payload.role != "assistant"
+              )
+            | {
+                role: (.payload.role // "context"),
+                phase: (.payload.phase // null),
+                timestamp: (.timestamp // null),
+                body: context_body(.payload.content)
+              }
+            | select(.body != "")
+          ]
+        ) as $context_entries
+
       | (
           [
             .[]
             | if .type == "event_msg" and .payload.type == "user_message" then
-                "### User\n\nTimestamp: `" + (.timestamp // "unknown") + "`\n\n" + (.payload.message // "")
+                {
+                  kind: "User",
+                  label: null,
+                  timestamp: .timestamp,
+                  body: (.payload.message // "")
+                }
               elif .type == "event_msg" and .payload.type == "agent_message" then
-                "### Assistant\n\nTimestamp: `" + (.timestamp // "unknown") + "`\n\n" + (.payload.message // "")
+                {
+                  kind: "Assistant",
+                  label: (.payload.phase // null),
+                  timestamp: .timestamp,
+                  body: (.payload.message // "")
+                }
+              elif .type == "response_item" and .payload.type == "function_call" then
+                {
+                  kind: "Tool Call",
+                  label: (.payload.name // "unknown"),
+                  timestamp: (.timestamp // null),
+                  body: (
+                    (.payload.arguments | fromjson? // .payload.arguments)
+                    | if type == "string" then . else tojson end
+                  )
+                }
+              elif .type == "response_item" and .payload.type == "function_call_output" then
+                {
+                  kind: "Tool Output",
+                  label: ($call_names[.payload.call_id] // .payload.call_id),
+                  timestamp: (.timestamp // null),
+                  body: (.payload.output // "")
+                }
               else
                 empty
               end
+            | select(.body != "")
           ]
-        ) as $entries
+        ) as $conversation_entries
+
       | (
           [
-            "# Codex Session Mirror",
+            .[]
+            | select(
+                .type == "event_msg"
+                and (
+                  .payload.type == "task_started"
+                  or .payload.type == "task_complete"
+                  or .payload.type == "thread_rolled_back"
+                  or .payload.type == "turn_aborted"
+                )
+              )
+            | {
+                type: .payload.type,
+                timestamp: .timestamp,
+                body: (
+                  if (.payload.last_agent_message // "") != "" then
+                    .payload.last_agent_message
+                  else
+                    ((.payload | del(.type)) | tostring)
+                  end
+                )
+              }
+          ]
+        ) as $event_entries
+
+      | ($context_entries
+          | to_entries
+          | map(
+              render_text_block(
+                (
+                  "Context "
+                  + ((.key + 1) | tostring)
+                  + " ("
+                  + .value.role
+                  + (
+                      if (.value.phase // "") == "" then
+                        ""
+                      else
+                        ", phase: " + .value.phase
+                      end
+                    )
+                  + ")"
+                );
+                .value.timestamp;
+                .value.body
+              )
+            )
+        ) as $context_blocks
+
+      | ($conversation_entries
+          | to_entries
+          | map(
+              if .value.kind == "Tool Call" then
+                render_tool_block(
+                  (((.key + 1) | tostring) + ". Tool Call: " + .value.label);
+                  .value.timestamp;
+                  "json";
+                  .value.body
+                )
+              elif .value.kind == "Tool Output" then
+                render_tool_block(
+                  (((.key + 1) | tostring) + ". Tool Output: " + .value.label);
+                  .value.timestamp;
+                  "text";
+                  .value.body
+                )
+              else
+                render_text_block(
+                  (
+                    ((.key + 1) | tostring)
+                    + ". "
+                    + .value.kind
+                    + (
+                        if (.value.label // "") == "" then
+                          ""
+                        else
+                          " (" + .value.label + ")"
+                        end
+                      )
+                  );
+                  .value.timestamp;
+                  .value.body
+                )
+              end
+            )
+        ) as $conversation_blocks
+
+      | ($event_entries
+          | to_entries
+          | map(
+              render_text_block(
+                (
+                  "Event "
+                  + ((.key + 1) | tostring)
+                  + ": "
+                  + .value.type
+                );
+                .value.timestamp;
+                .value.body
+              )
+            )
+        ) as $event_blocks
+
+      | (
+          [
+            "# " + $title,
             "",
             "## Metadata",
             "",
             "- Session ID: `" + $session_id + "`",
             "- Thread Name: " + (if $thread_name == "" then "_unknown_" else "`" + $thread_name + "`" end),
-            "- Session Timestamp: " + (if ($meta.timestamp // "") == "" then "_unknown_" else "`" + $meta.timestamp + "`" end),
-            "- Updated At: " + (if $updated_at == "" then "_unknown_" else "`" + $updated_at + "`" end),
+            "- Session Timestamp: `" + pretty_ts($meta.timestamp) + "`",
+            "- Updated At: `" + pretty_ts($updated_at) + "`",
             "- CWD: " + (if ($meta.cwd // "") == "" then "_unknown_" else "`" + $meta.cwd + "`" end),
             "",
-            "## Transcript",
+            "## Export Notes",
+            "",
+            "- This Markdown omits routine `token_count` and `turn_context` records to reduce noise.",
+            "- Raw source session files remain untouched and are the authoritative input.",
             ""
           ]
-          + if ($entries | length) == 0 then
-              ["_No user or assistant messages were found in this session export._"]
+          + if ($context_blocks | length) == 0 then
+              []
             else
-              $entries
+              ["## Session Context", ""] + $context_blocks + [""]
+            end
+          + if ($conversation_blocks | length) == 0 then
+              ["## Conversation", "", "_No conversation entries were found in this session export._", ""]
+            else
+              ["## Conversation", ""] + $conversation_blocks + [""]
+            end
+          + if ($event_blocks | length) == 0 then
+              []
+            else
+              ["## Notable Events", ""] + $event_blocks + [""]
             end
         )
       | join("\n")
-    ' "${file_path}" > "${markdown_path}"
+    ' "${file_path}" > "${temp_path}"
+
+  write_with_optional_redaction "${temp_path}" "${markdown_path}"
 }
 
 export_session() {
@@ -155,6 +472,7 @@ export_session() {
   local source_relpath
   local thread_name
   local updated_at
+  local title
   local metadata_path
   local markdown_path
 
@@ -168,6 +486,7 @@ export_session() {
   source_relpath="$(relative_to_source "${file_path}")"
   thread_name="$(lookup_session_index_field "${session_id}" "thread_name")"
   updated_at="$(lookup_session_index_field "${session_id}" "updated_at")"
+  title="$(derive_session_title "${file_path}" "${thread_name}" "${session_id}")"
 
   metadata_path="${metadata_dir}/${session_id}.json"
   markdown_path="${sessions_dir}/${session_id}.md"
@@ -179,12 +498,14 @@ export_session() {
     "${source_relpath}" \
     "${thread_name}" \
     "${updated_at}" \
-    "${exported_at}"
+    "${exported_at}" \
+    "${title}"
 
   write_markdown \
     "${file_path}" \
     "${session_id}" \
     "${markdown_path}" \
+    "${title}" \
     "${thread_name}" \
     "${updated_at}"
 
@@ -201,9 +522,13 @@ while (($# > 0)); do
       source_dir="${2:?Missing value for --source-dir}"
       shift 2
       ;;
-    --output-dir)
-      output_dir="${2:?Missing value for --output-dir}"
+    --out-dir|--output-dir)
+      output_dir="${2:?Missing value for --out-dir}"
       shift 2
+      ;;
+    --redact)
+      redact_mode="true"
+      shift
       ;;
     -h|--help)
       usage
@@ -218,13 +543,18 @@ while (($# > 0)); do
 done
 
 require_cmd jq
+require_cmd perl
 
 if [[ -z "${source_dir}" ]]; then
   source_dir="${codex_home}/sessions"
 fi
 
 if [[ -z "${output_dir}" ]]; then
-  output_dir="${PWD}/out"
+  if [[ "${redact_mode}" == "true" ]]; then
+    output_dir="${PWD}/out-redacted"
+  else
+    output_dir="${PWD}/out"
+  fi
 fi
 
 if [[ "${output_dir}" == "/" ]]; then
@@ -237,6 +567,12 @@ session_index="${codex_home}/session_index.jsonl"
 if [[ ! -d "${source_dir}" ]]; then
   printf 'Source directory not found: %s\n' "${source_dir}" >&2
   exit 1
+fi
+
+hostname_short="$(hostname 2>/dev/null || true)"
+hostname_fqdn="$(hostname -f 2>/dev/null || true)"
+if [[ "${hostname_fqdn}" != *.* ]]; then
+  hostname_fqdn=""
 fi
 
 readonly METADATA_DIR="${output_dir}/metadata"
@@ -258,4 +594,8 @@ if [[ "${session_count}" -eq 0 ]]; then
   exit 0
 fi
 
-printf 'Exported %d session(s) to %s\n' "${session_count}" "${output_dir}"
+if [[ "${redact_mode}" == "true" ]]; then
+  printf 'Exported %d redacted session(s) to %s\n' "${session_count}" "${output_dir}"
+else
+  printf 'Exported %d session(s) to %s\n' "${session_count}" "${output_dir}"
+fi

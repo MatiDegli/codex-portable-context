@@ -28,6 +28,7 @@ Only the third layer is a candidate for cross-device transport.
 - prefer explicit export over blind directory replication
 - prefer append-friendly derived artifacts over mutable shared state
 - keep transport configuration separate from credential handling
+- keep redaction best-effort and conservative
 
 ## Project Safety Invariants
 
@@ -38,9 +39,21 @@ Only the third layer is a candidate for cross-device transport.
 
 ## Redaction Direction
 
-Redaction is not implemented yet, but the project should leave room for:
+Redaction is now implemented as an optional export mode. It applies only to derived output and does not modify source session files.
 
-- path redaction
-- hostname redaction
-- tool output filtering
-- selective export modes
+Current conservative rules include:
+
+- current username when confidently matched
+- home-directory paths such as `/home/<user>/...`
+- obvious local absolute home paths
+- current hostname when confidently matched
+- a small set of obvious token/secret patterns
+
+Current placeholders:
+
+- `<redacted-user>`
+- `<redacted-home>`
+- `<redacted-host>`
+- `<redacted-secret>`
+
+Redaction is best-effort, not a guaranteed DLP system. The goal is to reduce accidental leakage in portable mirror output without destroying large amounts of useful context.

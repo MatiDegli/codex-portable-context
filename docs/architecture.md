@@ -45,6 +45,8 @@ The exact format is still open, but the expected shape is something like:
 
 The initial implementation now follows that shape under a local `out/` directory.
 
+The Markdown export is intentionally more structured than the raw input. It separates conversation content into readable sections instead of mirroring every low-level event line one by one.
+
 ## Direction
 
 The main flow should be:
@@ -59,7 +61,17 @@ Current command:
 scripts/codex-session-mirror
 ```
 
+Current CLI modes:
+
+```text
+scripts/codex-session-mirror
+scripts/codex-session-mirror --redact
+scripts/codex-session-mirror --out-dir ./out-custom
+```
+
 Transport is secondary. The mirror should make it possible to use tools like Syncthing or `rsync` safely later, without making them part of the core design.
+
+The exporter remains read-only with respect to Codex source state. Redaction, when enabled, is applied only to the derived mirror files.
 
 ## Non-Goals
 

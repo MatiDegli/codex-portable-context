@@ -82,6 +82,46 @@ out/
 
 This output is read-only derived data for browsing and context recovery. It is not meant to be written back into Codex state.
 
+## Export Quality
+
+The current export is optimized for useful reading, not raw event dumping.
+
+The Markdown output now separates:
+
+- session context
+- user messages
+- assistant messages
+- tool calls
+- tool outputs
+- notable lifecycle events
+
+To keep the export readable, routine noise such as `token_count` and `turn_context` records is omitted from Markdown. The raw session source remains untouched and is still the authoritative input.
+
+## Redaction
+
+Redaction is optional and only affects the derived mirror output.
+
+Default behavior is non-redacted:
+
+```bash
+./scripts/codex-session-mirror
+```
+
+Redacted export:
+
+```bash
+./scripts/codex-session-mirror --redact
+```
+
+When redaction is enabled, the script uses conservative placeholders such as:
+
+- `<redacted-user>`
+- `<redacted-home>`
+- `<redacted-host>`
+- `<redacted-secret>`
+
+This is best-effort redaction, not a guaranteed DLP system. Source session files under `~/.codex/sessions` are never modified.
+
 ## Usage
 
 Default export:
@@ -90,12 +130,26 @@ Default export:
 ./scripts/codex-session-mirror
 ```
 
+Redacted export:
+
+```bash
+./scripts/codex-session-mirror --redact
+```
+
 Custom paths:
 
 ```bash
 ./scripts/codex-session-mirror \
   --codex-home "$HOME/.codex" \
-  --output-dir ./out
+  --out-dir ./out
+```
+
+Custom redacted output path:
+
+```bash
+./scripts/codex-session-mirror \
+  --redact \
+  --out-dir ./out-redacted
 ```
 
 ## Planned Follow-Up
@@ -103,9 +157,9 @@ Custom paths:
 The next useful steps are still:
 
 1. Read `~/.codex/sessions/**/*.jsonl`.
-2. Improve the normalized per-session metadata record.
-3. Expand the read-only mirror format carefully.
-4. Add optional redaction and transport recipes without touching credentials.
+2. Improve the normalized per-session metadata record further.
+3. Add optional redaction refinements without becoming a DLP system.
+4. Add transport recipes without touching credentials.
 
 See:
 
