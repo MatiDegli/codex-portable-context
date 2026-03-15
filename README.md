@@ -126,6 +126,8 @@ Examples:
 
 Both `codex-session-open --help` and `codex-session-latest --help` now include short built-in examples so the common open/print flows are easier to discover from the terminal.
 
+`codex-session-mirror --help` and `codex-session-list --help` now follow the same pattern, so all four main helper commands present examples in a consistent style.
+
 ## Export Quality
 
 The transcript export is optimized for useful reading. It separates:

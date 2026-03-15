@@ -29,6 +29,13 @@ usage() {
 Usage: ${SCRIPT_NAME} [--codex-home PATH] [--source-dir PATH] [--out-dir PATH] [--redact] [--no-context] [--no-tools] [--no-events] [--conversation-only]
 
 Export a read-only mirror of local Codex sessions into a derived output tree.
+
+Examples:
+  ${SCRIPT_NAME}
+  ${SCRIPT_NAME} --redact
+  ${SCRIPT_NAME} --conversation-only
+  ${SCRIPT_NAME} --no-context --no-events
+  ${SCRIPT_NAME} --out-dir ./out-custom
 EOF
 }
 
