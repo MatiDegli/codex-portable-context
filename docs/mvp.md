@@ -63,7 +63,7 @@ It also now includes lightweight convenience helpers that read only the derived 
 Supported convenience flags are intentionally small:
 
 - `codex-session-list`: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--redaction`, `--json`
-- `codex-session-open`: `--metadata`, `--print`, `--out-dir`
+- `codex-session-open`: `--metadata`, `--print`, `--out-dir`, `--landing`, `--latest`
 - `codex-session-latest`: `--metadata`, `--print`, `--out-dir`
 
 Markdown intentionally omits routine low-value records such as `token_count` and `turn_context`. This rule is conservative and documented so the export stays readable without pretending to be a lossless raw dump.

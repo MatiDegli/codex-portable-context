@@ -39,6 +39,26 @@ mirror_index_path() {
   printf '%s\n' "${out_dir}/sessions-index.jsonl"
 }
 
+mirror_landing_path() {
+  local out_dir="$1"
+
+  printf '%s\n' "${out_dir}/README.md"
+}
+
+mirror_require_landing() {
+  local out_dir="$1"
+  local landing_path
+
+  landing_path="$(mirror_landing_path "${out_dir}")"
+  if [[ ! -f "${landing_path}" ]]; then
+    printf 'Mirror landing not found: %s\n' "${landing_path}" >&2
+    printf 'Run scripts/codex-session-mirror first, or pass --out-dir.\n' >&2
+    exit 1
+  fi
+
+  printf '%s\n' "${landing_path}"
+}
+
 mirror_require_index() {
   local out_dir="$1"
   local index_path

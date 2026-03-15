@@ -12,10 +12,12 @@ out_dir=""
 target_kind="markdown"
 print_only="false"
 selector=""
+open_landing="false"
+open_latest="false"
 
 usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [--out-dir PATH] [--metadata] [--print] <session-id-or-prefix>
+Usage: ${SCRIPT_NAME} [--out-dir PATH] [--metadata] [--print] [--landing | --latest | <session-id-or-prefix>]
 
 Open or print a derived Markdown or metadata file from the exported mirror.
 EOF
@@ -35,6 +37,14 @@ while (($# > 0)); do
       print_only="true"
       shift
       ;;
+    --landing)
+      open_landing="true"
+      shift
+      ;;
+    --latest)
+      open_latest="true"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -50,19 +60,46 @@ while (($# > 0)); do
   esac
 done
 
-if [[ -z "${selector}" ]]; then
+if [[ "${open_landing}" == "true" && "${open_latest}" == "true" ]]; then
+  printf 'Use only one of --landing or --latest.\n' >&2
+  exit 1
+fi
+
+if [[ "${open_landing}" == "true" && "${target_kind}" == "metadata" ]]; then
+  printf -- '--metadata cannot be combined with --landing.\n' >&2
+  exit 1
+fi
+
+if [[ "${open_landing}" == "false" && "${open_latest}" == "false" && -z "${selector}" ]]; then
   usage >&2
   exit 1
 fi
 
-mirror_require_cmd jq
+if [[ ("${open_landing}" == "true" || "${open_latest}" == "true") && -n "${selector}" ]]; then
+  printf 'Do not pass a session selector with --landing or --latest.\n' >&2
+  exit 1
+fi
 
 if [[ -z "${out_dir}" ]]; then
   out_dir="$(mirror_default_out_dir)"
 fi
-index_path="$(mirror_require_index "${out_dir}")"
-entry_json="$(mirror_resolve_unique_entry "${index_path}" "${selector}")"
-target_path="$(mirror_entry_path "${out_dir}" "${target_kind}" "${entry_json}")"
+
+if [[ "${open_landing}" == "true" ]]; then
+  target_path="$(mirror_require_landing "${out_dir}")"
+else
+  mirror_require_cmd jq
+  index_path="$(mirror_require_index "${out_dir}")"
+  if [[ "${open_latest}" == "true" ]]; then
+    entry_json="$(mirror_latest_entry "${index_path}")"
+    if [[ "${entry_json}" == "null" || -z "${entry_json}" ]]; then
+      printf 'No exported sessions are available in %s\n' "${out_dir}" >&2
+      exit 1
+    fi
+  else
+    entry_json="$(mirror_resolve_unique_entry "${index_path}" "${selector}")"
+  fi
+  target_path="$(mirror_entry_path "${out_dir}" "${target_kind}" "${entry_json}")"
+fi
 
 if [[ ! -f "${target_path}" ]]; then
   printf 'Derived file not found: %s\n' "${target_path}" >&2
