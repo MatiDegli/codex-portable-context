@@ -12,13 +12,27 @@ Build a first version that is useful for reading and context recovery across dev
 - keep raw source and exported mirror clearly separate
 - exclude credentials and runtime state
 
+## Current Command
+
+The initial command is:
+
+```bash
+./scripts/codex-session-mirror
+```
+
+It currently exports:
+
+- a per-session metadata JSON file
+- a combined JSONL index
+- a Markdown transcript view built from user and assistant messages
+
 ## Suggested First Outputs
 
 - `out/sessions-index.jsonl`
 - `out/metadata/<session-id>.json`
 - `out/sessions/<session-id>.md`
 
-These are placeholders for now, but they reflect the intended direction: stable, human-readable, and sync-friendlier than raw local state.
+These are now the concrete first outputs of the repo: stable, human-readable, and sync-friendlier than raw local state.
 
 ## Explicit Non-Goals For MVP
 

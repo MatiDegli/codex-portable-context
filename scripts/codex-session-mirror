@@ -1,0 +1,261 @@
+#!/usr/bin/env bash
+# Export a read-only mirror of local Codex session logs.
+
+set -euo pipefail
+
+readonly SCRIPT_NAME="$(basename "$0")"
+
+codex_home="${CODEX_HOME:-$HOME/.codex}"
+source_dir=""
+output_dir=""
+session_index=""
+
+usage() {
+  cat <<EOF
+Usage: ${SCRIPT_NAME} [--codex-home PATH] [--source-dir PATH] [--output-dir PATH]
+
+Export a read-only mirror of local Codex sessions into a derived output tree.
+EOF
+}
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    printf 'Missing required command: %s\n' "$1" >&2
+    exit 1
+  fi
+}
+
+relative_to_source() {
+  local file_path="$1"
+
+  if [[ "${file_path}" == "${source_dir}/"* ]]; then
+    printf '%s\n' "${file_path#"${source_dir}/"}"
+  else
+    printf '%s\n' "${file_path}"
+  fi
+}
+
+lookup_session_index_field() {
+  local session_id="$1"
+  local field_name="$2"
+
+  if [[ ! -f "${session_index}" ]]; then
+    return 0
+  fi
+
+  jq -r \
+    --arg id "${session_id}" \
+    --arg field "${field_name}" \
+    'select(.id == $id) | .[$field] // empty' \
+    "${session_index}" | tail -n 1
+}
+
+write_metadata() {
+  local file_path="$1"
+  local session_id="$2"
+  local metadata_path="$3"
+  local source_relpath="$4"
+  local thread_name="$5"
+  local updated_at="$6"
+  local exported_at="$7"
+
+  jq -s \
+    --arg session_id "${session_id}" \
+    --arg source_file "${file_path}" \
+    --arg source_relpath "${source_relpath}" \
+    --arg thread_name "${thread_name}" \
+    --arg updated_at "${updated_at}" \
+    --arg exported_at "${exported_at}" \
+    '
+      (map(select(.type == "session_meta")) | first | .payload // {}) as $meta
+      | {
+          session_id: $session_id,
+          thread_name: (if $thread_name == "" then null else $thread_name end),
+          exported_at: $exported_at,
+          updated_at: (if $updated_at == "" then null else $updated_at end),
+          source_file: $source_file,
+          source_relpath: $source_relpath,
+          session_timestamp: ($meta.timestamp // null),
+          cwd: ($meta.cwd // null),
+          originator: ($meta.originator // null),
+          source: ($meta.source // null),
+          model_provider: ($meta.model_provider // null),
+          cli_version: ($meta.cli_version // null),
+          event_count: length,
+          user_message_count: (
+            map(select(.type == "event_msg" and .payload.type == "user_message")) | length
+          ),
+          assistant_message_count: (
+            map(select(.type == "event_msg" and .payload.type == "agent_message")) | length
+          ),
+          function_call_count: (
+            map(select(.type == "response_item" and .payload.type == "function_call")) | length
+          )
+        }
+    ' "${file_path}" > "${metadata_path}"
+}
+
+write_markdown() {
+  local file_path="$1"
+  local session_id="$2"
+  local markdown_path="$3"
+  local thread_name="$4"
+  local updated_at="$5"
+
+  jq -rs \
+    --arg session_id "${session_id}" \
+    --arg thread_name "${thread_name}" \
+    --arg updated_at "${updated_at}" \
+    '
+      (map(select(.type == "session_meta")) | first | .payload // {}) as $meta
+      | (
+          [
+            .[]
+            | if .type == "event_msg" and .payload.type == "user_message" then
+                "### User\n\nTimestamp: `" + (.timestamp // "unknown") + "`\n\n" + (.payload.message // "")
+              elif .type == "event_msg" and .payload.type == "agent_message" then
+                "### Assistant\n\nTimestamp: `" + (.timestamp // "unknown") + "`\n\n" + (.payload.message // "")
+              else
+                empty
+              end
+          ]
+        ) as $entries
+      | (
+          [
+            "# Codex Session Mirror",
+            "",
+            "## Metadata",
+            "",
+            "- Session ID: `" + $session_id + "`",
+            "- Thread Name: " + (if $thread_name == "" then "_unknown_" else "`" + $thread_name + "`" end),
+            "- Session Timestamp: " + (if ($meta.timestamp // "") == "" then "_unknown_" else "`" + $meta.timestamp + "`" end),
+            "- Updated At: " + (if $updated_at == "" then "_unknown_" else "`" + $updated_at + "`" end),
+            "- CWD: " + (if ($meta.cwd // "") == "" then "_unknown_" else "`" + $meta.cwd + "`" end),
+            "",
+            "## Transcript",
+            ""
+          ]
+          + if ($entries | length) == 0 then
+              ["_No user or assistant messages were found in this session export._"]
+            else
+              $entries
+            end
+        )
+      | join("\n")
+    ' "${file_path}" > "${markdown_path}"
+}
+
+export_session() {
+  local file_path="$1"
+  local metadata_dir="$2"
+  local sessions_dir="$3"
+  local index_path="$4"
+  local exported_at="$5"
+  local session_id
+  local source_relpath
+  local thread_name
+  local updated_at
+  local metadata_path
+  local markdown_path
+
+  session_id="$(
+    jq -r 'select(.type == "session_meta") | .payload.id // empty' "${file_path}" | head -n 1
+  )"
+  if [[ -z "${session_id}" ]]; then
+    session_id="$(basename "${file_path%.jsonl}")"
+  fi
+
+  source_relpath="$(relative_to_source "${file_path}")"
+  thread_name="$(lookup_session_index_field "${session_id}" "thread_name")"
+  updated_at="$(lookup_session_index_field "${session_id}" "updated_at")"
+
+  metadata_path="${metadata_dir}/${session_id}.json"
+  markdown_path="${sessions_dir}/${session_id}.md"
+
+  write_metadata \
+    "${file_path}" \
+    "${session_id}" \
+    "${metadata_path}" \
+    "${source_relpath}" \
+    "${thread_name}" \
+    "${updated_at}" \
+    "${exported_at}"
+
+  write_markdown \
+    "${file_path}" \
+    "${session_id}" \
+    "${markdown_path}" \
+    "${thread_name}" \
+    "${updated_at}"
+
+  jq -c . "${metadata_path}" >> "${index_path}"
+}
+
+while (($# > 0)); do
+  case "$1" in
+    --codex-home)
+      codex_home="${2:?Missing value for --codex-home}"
+      shift 2
+      ;;
+    --source-dir)
+      source_dir="${2:?Missing value for --source-dir}"
+      shift 2
+      ;;
+    --output-dir)
+      output_dir="${2:?Missing value for --output-dir}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'Unknown argument: %s\n' "$1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+require_cmd jq
+
+if [[ -z "${source_dir}" ]]; then
+  source_dir="${codex_home}/sessions"
+fi
+
+if [[ -z "${output_dir}" ]]; then
+  output_dir="${PWD}/out"
+fi
+
+if [[ "${output_dir}" == "/" ]]; then
+  printf 'Refusing to use / as output directory.\n' >&2
+  exit 1
+fi
+
+session_index="${codex_home}/session_index.jsonl"
+
+if [[ ! -d "${source_dir}" ]]; then
+  printf 'Source directory not found: %s\n' "${source_dir}" >&2
+  exit 1
+fi
+
+readonly METADATA_DIR="${output_dir}/metadata"
+readonly SESSIONS_DIR="${output_dir}/sessions"
+readonly INDEX_PATH="${output_dir}/sessions-index.jsonl"
+readonly EXPORTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+mkdir -p "${METADATA_DIR}" "${SESSIONS_DIR}"
+: > "${INDEX_PATH}"
+
+session_count=0
+while IFS= read -r file_path; do
+  export_session "${file_path}" "${METADATA_DIR}" "${SESSIONS_DIR}" "${INDEX_PATH}" "${EXPORTED_AT}"
+  session_count=$((session_count + 1))
+done < <(find "${source_dir}" -type f -name 'rollout-*.jsonl' | sort)
+
+if [[ "${session_count}" -eq 0 ]]; then
+  printf 'No session files found under %s\n' "${source_dir}"
+  exit 0
+fi
+
+printf 'Exported %d session(s) to %s\n' "${session_count}" "${output_dir}"

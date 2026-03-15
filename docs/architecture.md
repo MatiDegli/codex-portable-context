@@ -43,12 +43,20 @@ The exact format is still open, but the expected shape is something like:
 - `metadata/<session-id>.json`
 - `sessions/<session-id>.md`
 
+The initial implementation now follows that shape under a local `out/` directory.
+
 ## Direction
 
 The main flow should be:
 
 ```text
 ~/.codex/sessions -> parser/extractor -> normalized mirror -> optional transport layer
+```
+
+Current command:
+
+```text
+scripts/codex-session-mirror
 ```
 
 Transport is secondary. The mirror should make it possible to use tools like Syncthing or `rsync` safely later, without making them part of the core design.

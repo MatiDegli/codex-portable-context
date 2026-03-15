@@ -53,16 +53,59 @@ Out of scope:
 │   ├── mvp.md
 │   └── security.md
 └── scripts/
+    └── codex-session-mirror
 ```
 
-## Planned MVP
+## Current MVP
 
-The first useful version should:
+The repository now includes a first local export command:
+
+```bash
+./scripts/codex-session-mirror
+```
+
+By default it reads:
+
+- `~/.codex/sessions/**/*.jsonl`
+- `~/.codex/session_index.jsonl` when available
+
+And writes a derived mirror under:
+
+```text
+out/
+├── sessions-index.jsonl
+├── metadata/
+│   └── <session-id>.json
+└── sessions/
+    └── <session-id>.md
+```
+
+This output is read-only derived data for browsing and context recovery. It is not meant to be written back into Codex state.
+
+## Usage
+
+Default export:
+
+```bash
+./scripts/codex-session-mirror
+```
+
+Custom paths:
+
+```bash
+./scripts/codex-session-mirror \
+  --codex-home "$HOME/.codex" \
+  --output-dir ./out
+```
+
+## Planned Follow-Up
+
+The next useful steps are still:
 
 1. Read `~/.codex/sessions/**/*.jsonl`.
-2. Build a normalized per-session metadata record.
-3. Export a read-only mirror format that is safer to sync than raw local state.
-4. Avoid credentials, auth state, SQLite state, logs, and temporary files.
+2. Improve the normalized per-session metadata record.
+3. Expand the read-only mirror format carefully.
+4. Add optional redaction and transport recipes without touching credentials.
 
 See:
 
@@ -72,4 +115,4 @@ See:
 
 ## Status
 
-This repository currently contains the structure and design brief only. No sync engine or parser has been implemented yet.
+This repository now contains the first read-only export command plus the design brief for the next iterations.
