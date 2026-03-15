@@ -29,6 +29,7 @@ Only the third layer is a candidate for cross-device transport.
 - prefer append-friendly derived artifacts over mutable shared state
 - keep transport configuration separate from credential handling
 - keep redaction best-effort and conservative
+- treat transported mirror output as potentially sensitive unless you intentionally generated a redacted export
 
 ## Project Safety Invariants
 
@@ -58,3 +59,5 @@ Current placeholders:
 - `<redacted-secret>`
 
 Redaction is best-effort, not a guaranteed DLP system. The goal is to reduce accidental leakage in portable mirror output without destroying large amounts of useful context.
+
+If you transport the mirror to another device, especially one you do not fully control, prefer a deliberate `--redact` export and review the result as if it may still contain private project context.

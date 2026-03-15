@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Copy a derived Codex mirror to another location with one-way rsync.
+
+set -euo pipefail
+
+readonly SCRIPT_NAME="$(basename "$0")"
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+source "${SCRIPT_DIR}/../libcodex-session.sh"
+
+out_dir=""
+delete_mode="false"
+dry_run="false"
+destination=""
+
+usage() {
+  cat <<EOF
+Usage: ${SCRIPT_NAME} [--out-dir PATH] [--delete] [--dry-run] DESTINATION
+
+Rsync a derived mirror directory to DESTINATION. This helper only copies the mirror under out/ or an explicitly provided mirror path.
+EOF
+}
+
+while (($# > 0)); do
+  case "$1" in
+    --out-dir)
+      out_dir="${2:?Missing value for --out-dir}"
+      shift 2
+      ;;
+    --delete)
+      delete_mode="true"
+      shift
+      ;;
+    --dry-run)
+      dry_run="true"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      if [[ -n "${destination}" ]]; then
+        printf 'Only one destination is allowed.\n' >&2
+        exit 1
+      fi
+      destination="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "${destination}" ]]; then
+  usage >&2
+  exit 1
+fi
+
+mirror_require_cmd rsync
+
+if [[ -z "${out_dir}" ]]; then
+  out_dir="$(mirror_default_out_dir)"
+fi
+
+if [[ ! -d "${out_dir}" ]]; then
+  printf 'Mirror directory not found: %s\n' "${out_dir}" >&2
+  printf 'Run scripts/codex-session-mirror first, or pass --out-dir.\n' >&2
+  exit 1
+fi
+
+if [[ ! -f "${out_dir}/sessions-index.jsonl" ]]; then
+  printf 'Mirror index not found under: %s\n' "${out_dir}" >&2
+  printf 'This helper only syncs derived mirror directories.\n' >&2
+  exit 1
+fi
+
+rsync_args=(-av)
+if [[ "${delete_mode}" == "true" ]]; then
+  rsync_args+=(--delete)
+fi
+if [[ "${dry_run}" == "true" ]]; then
+  rsync_args+=(--dry-run)
+fi
+
+printf 'Rsyncing derived mirror: %s -> %s\n' "${out_dir}/" "${destination}"
+rsync "${rsync_args[@]}" "${out_dir}/" "${destination}"

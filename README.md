@@ -15,6 +15,8 @@ The source of truth stays local:
 
 The planned output is a separate derived mirror that is safer to read, copy, and index.
 
+Transport is optional and intentionally external to the core tool. The core project creates the mirror; moving that mirror between devices is a separate, user-controlled step.
+
 ## Scope
 
 Initial scope:
@@ -51,13 +53,16 @@ Out of scope:
 ├── docs/
 │   ├── architecture.md
 │   ├── mvp.md
-│   └── security.md
+│   ├── security.md
+│   └── transport.md
 └── scripts/
     ├── codex-session-list
     ├── codex-session-latest
     ├── codex-session-mirror
     ├── codex-session-open
-    └── libcodex-session.sh
+    ├── libcodex-session.sh
+    └── transport/
+        └── rsync-derived-mirror
 ```
 
 ## Current MVP
@@ -198,6 +203,26 @@ On each run it:
 
 This keeps the mirror read-only with respect to `~/.codex` while making repeated exports much cheaper.
 
+## Transport
+
+The recommended thing to move between devices is only the derived mirror under `out/` or `out-redacted/`.
+
+This repo does not recommend syncing raw `~/.codex`. In particular, do not treat these as transport targets:
+
+- `~/.codex/auth.json`
+- `~/.codex/config.toml`
+- `~/.codex/state_*.sqlite`
+- `~/.codex/logs_*.sqlite`
+- `~/.codex/tmp/`
+- `~/.codex/shell_snapshots/`
+
+Transport recipes live in [transport.md](docs/transport.md) and stay outside the core exporter:
+
+- Syncthing, with a bias toward one-way or clearly-owned flows
+- `rsync`, for explicit directional copy
+
+Transport is optional. You can use the project entirely locally without ever moving the mirror off the machine that generated it.
+
 ## Lookup Helpers
 
 The repo now includes small convenience CLIs that operate only on the derived mirror under `out/`.
@@ -267,15 +292,16 @@ It is intentionally deterministic and non-generative. The goal is to make recent
 The next useful steps are still:
 
 1. Add optional redaction refinements without becoming a DLP system.
-2. Add transport recipes without touching credentials.
-3. Keep the convenience helpers small and explicit instead of growing them into a search or resume layer.
-4. Add more reading-oriented export polish only when it stays deterministic and local-first.
+2. Keep the convenience helpers small and explicit instead of growing them into a search or resume layer.
+3. Add more reading-oriented export polish only when it stays deterministic and local-first.
+4. Refine transport guidance only if it stays clearly outside the core mirror logic.
 
 See:
 
 - [architecture.md](docs/architecture.md)
 - [security.md](docs/security.md)
 - [mvp.md](docs/mvp.md)
+- [transport.md](docs/transport.md)
 
 ## Status
 

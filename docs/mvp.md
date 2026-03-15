@@ -75,6 +75,8 @@ The lookup helpers are convenience commands only. They do not search raw Codex s
 
 The exporter now also includes a small derived `summary` object in per-session metadata and in `sessions-index.jsonl`. It is mechanical rather than generative and is meant for quick scanning of recent sessions.
 
+Transport remains optional and external. See `docs/transport.md` for Syncthing and `rsync` recipes that move only the derived mirror.
+
 ## Suggested First Outputs
 
 - `out/sessions-index.jsonl`
@@ -109,5 +111,5 @@ For older mirror outputs, helper path resolution falls back to `metadata/<sessio
 ## Future Extensions
 
 - more selective redaction options
-- safe transport recipes for Syncthing or `rsync`
 - lightweight export polish that stays deterministic
+- small transport guidance refinements that remain outside core logic
