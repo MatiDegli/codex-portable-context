@@ -105,7 +105,7 @@ Use a custom output directory:
 These commands operate only on the derived mirror, never on raw `~/.codex`.
 
 - `./scripts/codex-session-list`
-  Useful flags: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--redaction`, `--json`
+  Useful flags: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--details`, `--redaction`, `--json`
 - `./scripts/codex-session-open <session-id-or-prefix>`
   Useful flags: `--metadata`, `--print`, `--out-dir`, `--landing`, `--latest`
 - `./scripts/codex-session-latest`
@@ -115,6 +115,7 @@ Examples:
 
 ```bash
 ./scripts/codex-session-list --latest
+./scripts/codex-session-list --latest --summary --details
 ./scripts/codex-session-list --title galaxy --limit 5
 ./scripts/codex-session-list --out-dir ./out-redacted --latest --redaction
 ./scripts/codex-session-open 019cef3a --print
@@ -136,6 +137,8 @@ The transcript export is optimized for useful reading. It separates:
 Routine low-value records such as `token_count` and `turn_context` are omitted from Markdown to keep exports readable. This filtering is conservative and documented; the source session files remain unchanged.
 
 Each session also gets a small mechanical summary in metadata and in `sessions-index.jsonl`, and each transcript begins with a compact session snapshot so recent work is easier to scan quickly.
+
+`codex-session-list --summary --details` uses those exported summary fields to show a compact preview, activity line, and environment line directly in the terminal.
 
 ## Redaction
 

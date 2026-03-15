@@ -14,11 +14,12 @@ title_filter=""
 id_filter=""
 json_mode="false"
 show_summary="false"
+show_details="false"
 show_redaction="false"
 
 usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [--out-dir PATH] [--limit N] [--latest] [--title SUBSTRING] [--id SUBSTRING] [--summary] [--redaction] [--json]
+Usage: ${SCRIPT_NAME} [--out-dir PATH] [--limit N] [--latest] [--title SUBSTRING] [--id SUBSTRING] [--summary] [--details] [--redaction] [--json]
 
 List exported sessions from the derived mirror under out/.
 EOF
@@ -56,6 +57,10 @@ while (($# > 0)); do
       show_summary="true"
       shift
       ;;
+    --details)
+      show_details="true"
+      shift
+      ;;
     --redaction)
       show_redaction="true"
       shift
@@ -90,10 +95,13 @@ entries_json="$(
           sort_timestamp: (.updated_at // .session_timestamp // .exported_at // ""),
           display_title: (.title // ("Session " + .session_id)),
           markdown_relpath: (.markdown_relpath // ("sessions/" + .session_id + ".md")),
-          summary_line: (.summary.one_line // null),
+          summary_line: (.summary.preview // .summary.one_line // null),
+          detail_line: (.summary.detail_line // null),
+          activity_line: (.summary.activity // null),
+          environment_line: (.summary.environment // null),
           redaction_line: (
             if (.redaction_report.enabled // false) then
-              "redaction: on, replacements: "
+              "on, replacements: "
               + ((.redaction_report.total_replacements // 0) | tostring)
               + ", home: "
               + ((.redaction_report.placeholder_totals.home // 0) | tostring)
@@ -104,7 +112,7 @@ entries_json="$(
               + ", secret: "
               + ((.redaction_report.placeholder_totals.secret // 0) | tostring)
             else
-              "redaction: off"
+              "off"
             end
           )
         }
@@ -133,18 +141,28 @@ if [[ "${json_mode}" == "true" ]]; then
 fi
 
 printf '%-36s  %-19s  %-44s  %s\n' 'SESSION ID' 'UPDATED' 'TITLE' 'MARKDOWN'
-while IFS=$'\t' read -r session_id updated_at title markdown_relpath summary_line redaction_line; do
+while IFS=$'\t' read -r session_id updated_at title markdown_relpath summary_line detail_line activity_line environment_line redaction_line; do
   printf '%-36s  %-19s  %-44s  %s\n' \
     "${session_id}" \
     "$(mirror_pretty_timestamp "${updated_at}")" \
     "$(mirror_truncate "${title}" 44)" \
     "${markdown_relpath}"
   if [[ "${show_summary}" == "true" && -n "${summary_line}" && "${summary_line}" != "null" ]]; then
-    printf '  %s\n' "$(mirror_truncate "${summary_line}" 120)"
+    mirror_print_labeled_line 'preview' "${summary_line}"
+  fi
+  if [[ "${show_details}" == "true" ]]; then
+    if [[ -n "${activity_line}" && "${activity_line}" != "null" ]]; then
+      mirror_print_labeled_line 'activity' "${activity_line}"
+    elif [[ -n "${detail_line}" && "${detail_line}" != "null" ]]; then
+      mirror_print_labeled_line 'details' "${detail_line}"
+    fi
+    if [[ -n "${environment_line}" && "${environment_line}" != "null" ]]; then
+      mirror_print_labeled_line 'environment' "${environment_line}"
+    fi
   fi
   if [[ "${show_redaction}" == "true" && -n "${redaction_line}" && "${redaction_line}" != "null" ]]; then
-    printf '  %s\n' "$(mirror_truncate "${redaction_line}" 120)"
+    mirror_print_labeled_line 'redaction' "${redaction_line}"
   fi
 done < <(
-  jq -r '.[] | [.session_id, .sort_timestamp, .display_title, .markdown_relpath, (.summary_line // ""), (.redaction_line // "")] | @tsv' <<< "${entries_json}"
+  jq -r '.[] | [.session_id, .sort_timestamp, .display_title, .markdown_relpath, (.summary_line // ""), (.detail_line // ""), (.activity_line // ""), (.environment_line // ""), (.redaction_line // "")] | @tsv' <<< "${entries_json}"
 )

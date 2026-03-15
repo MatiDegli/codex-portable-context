@@ -102,6 +102,37 @@ mirror_truncate() {
   fi
 }
 
+mirror_print_labeled_line() {
+  local label="$1"
+  local value="$2"
+  local width="${3:-110}"
+  local prefix="  ${label}: "
+  local indent
+  local available_width
+  local first_line="true"
+  local wrapped_line
+
+  indent="$(printf '%*s' "${#prefix}" '')"
+  available_width=$((width - ${#prefix}))
+  if ((available_width < 20)); then
+    available_width=20
+  fi
+
+  if command -v fold >/dev/null 2>&1; then
+    while IFS= read -r wrapped_line; do
+      if [[ "${first_line}" == "true" ]]; then
+        printf '%s%s\n' "${prefix}" "${wrapped_line}"
+        first_line="false"
+      else
+        printf '%s%s\n' "${indent}" "${wrapped_line}"
+      fi
+    done < <(printf '%s\n' "${value}" | fold -s -w "${available_width}")
+    return 0
+  fi
+
+  printf '%s%s\n' "${prefix}" "${value}"
+}
+
 mirror_entry_title() {
   local entry_json="$1"
 

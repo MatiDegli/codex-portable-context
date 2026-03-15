@@ -101,11 +101,13 @@ The repo also includes lightweight helpers that operate only on the derived mirr
 
 Supported convenience flags are intentionally small:
 
-- `codex-session-list`: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--redaction`, `--json`
+- `codex-session-list`: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--details`, `--redaction`, `--json`
 - `codex-session-open`: `--metadata`, `--print`, `--out-dir`, `--landing`, `--latest`
 - `codex-session-latest`: `--metadata`, `--print`, `--out-dir`
 
 These commands are convenience helpers only. They do not search raw Codex state, resume sessions, or add write-back behavior.
+
+`codex-session-list --summary --details` is the most reader-friendly terminal view: it keeps the normal list output, then adds the exported preview, activity, and environment lines beneath each matching session.
 
 ## Exported Index Contract
 
