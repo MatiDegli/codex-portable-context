@@ -38,7 +38,7 @@ The default mirror layout is:
 What each file is for:
 
 - `README.md`
-  Landing page for browsing the mirror directly after copy or sync.
+  Landing page for browsing the mirror directly after copy or sync, with a small "Start Here" section for the newest exported session.
 - `sessions-index.jsonl`
   Combined machine-readable session index used by helper commands.
 - `metadata/<session-id>.json`
@@ -62,6 +62,8 @@ The Markdown transcript view is optimized for useful review. It separates:
 Routine low-value records such as `token_count` and `turn_context` are omitted from Markdown so the output stays readable. This is a documented display choice only; raw source files remain unchanged.
 
 The root `out/README.md` is generated from `sessions-index.jsonl`, lists sessions newest first, and links to the exported transcript and metadata files with relative paths.
+
+Each transcript now also starts with a small `Session Snapshot` section so a reader can quickly see what the conversation started with, the latest assistant reply, and the general session shape before diving into the full transcript.
 
 ## Redaction
 

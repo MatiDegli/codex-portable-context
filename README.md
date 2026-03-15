@@ -63,7 +63,7 @@ out/
     └── <session-id>.md
 ```
 
-Use `out/README.md` as the main entry point when browsing the mirror on another device. It is generated from the derived index, includes relative links to each transcript and metadata file, and stays self-contained after copy or sync.
+Use `out/README.md` as the main entry point when browsing the mirror on another device. It is generated from the derived index, includes a small "Start Here" section for the newest session, links to each transcript and metadata file, and stays self-contained after copy or sync.
 
 Repeated runs reuse unchanged derived artifacts when possible. The hidden state file is local bookkeeping for the mirror output only.
 
@@ -135,7 +135,7 @@ The transcript export is optimized for useful reading. It separates:
 
 Routine low-value records such as `token_count` and `turn_context` are omitted from Markdown to keep exports readable. This filtering is conservative and documented; the source session files remain unchanged.
 
-Each session also gets a small mechanical summary in metadata and in `sessions-index.jsonl` so recent work is easier to scan quickly.
+Each session also gets a small mechanical summary in metadata and in `sessions-index.jsonl`, and each transcript begins with a compact session snapshot so recent work is easier to scan quickly.
 
 ## Redaction
 
@@ -190,6 +190,8 @@ They currently rely on these fields:
 - `markdown_relpath`
 - `summary.one_line`
 - `redaction_report`
+
+The generated landing page also uses the exported summary fields to show a short preview, activity line, and environment line for each session.
 
 For older mirror outputs, path resolution can fall back to:
 

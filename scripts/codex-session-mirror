@@ -513,20 +513,47 @@ write_landing() {
       def yes_no($value):
         if $value then "yes" else "no" end;
 
+      def markdown_path($entry):
+        ($entry.markdown_relpath // ("sessions/" + $entry.session_id + ".md"));
+
+      def metadata_path($entry):
+        ($entry.metadata_relpath // ("metadata/" + $entry.session_id + ".json"));
+
       def render_session($entry):
         [
           "### " + ($entry.title // ("Session " + $entry.session_id)),
           "",
           "- Session ID: `" + $entry.session_id + "`",
           "- Updated: `" + pretty_ts(($entry | session_sort_key)) + "`",
-          "- Transcript: [" + ($entry.markdown_relpath // ("sessions/" + $entry.session_id + ".md")) + "](" + ($entry.markdown_relpath // ("sessions/" + $entry.session_id + ".md")) + ")",
-          "- Metadata: [" + ($entry.metadata_relpath // ("metadata/" + $entry.session_id + ".json")) + "](" + ($entry.metadata_relpath // ("metadata/" + $entry.session_id + ".json")) + ")"
+          "- Transcript: [" + markdown_path($entry) + "](" + markdown_path($entry) + ")",
+          "- Metadata: [" + metadata_path($entry) + "](" + metadata_path($entry) + ")"
         ]
         + (
-            if (($entry.summary.one_line // "") == "") then
+            if (($entry.summary.preview // "") == "") then
               []
             else
-              ["- Summary: " + $entry.summary.one_line]
+              ["- Started with: " + $entry.summary.preview]
+            end
+          )
+        + (
+            if (($entry.summary.last_assistant_message // "") == "") then
+              []
+            else
+              ["- Latest assistant reply: " + $entry.summary.last_assistant_message]
+            end
+          )
+        + (
+            if (($entry.summary.activity // "") == "") then
+              []
+            else
+              ["- Activity: " + $entry.summary.activity]
+            end
+          )
+        + (
+            if (($entry.summary.environment // "") == "") then
+              []
+            else
+              ["- Environment: " + $entry.summary.environment]
             end
           )
         + [""];
@@ -534,6 +561,7 @@ write_landing() {
       (sort_by(session_sort_key, .session_id) | reverse) as $entries
       | ($entries | length) as $session_count
       | (($entries[0] | session_sort_key) // "") as $latest_timestamp
+      | ($entries[0] // null) as $latest_entry
       | (
           if $session_count == 0 then
             $landing_redacted
@@ -551,13 +579,25 @@ write_landing() {
             "",
             "## Mirror Summary",
             "",
-          "- Exported at: `" + pretty_ts($exported_at) + "`",
-          "- Sessions: `" + ($session_count | tostring) + "`",
-          "- Latest session update: `" + pretty_ts($latest_timestamp) + "`",
+            "- Exported at: `" + pretty_ts($exported_at) + "`",
+            "- Sessions: `" + ($session_count | tostring) + "`",
+            "- Latest session update: `" + pretty_ts($latest_timestamp) + "`",
             "- Redacted export: `" + yes_no($is_redacted) + "`",
             "- Session index: [sessions-index.jsonl](sessions-index.jsonl)",
             ""
           ]
+          + if $session_count == 0 then
+              []
+            else
+              [
+                "## Start Here",
+                "",
+                "- Latest transcript: [" + markdown_path($latest_entry) + "](" + markdown_path($latest_entry) + ")",
+                "- Latest metadata: [" + metadata_path($latest_entry) + "](" + metadata_path($latest_entry) + ")",
+                "- `sessions-index.jsonl` is the machine-readable index for scripting and helper CLIs.",
+                ""
+              ]
+            end
           + if $session_count == 0 then
               [
                 "## Sessions",
@@ -627,6 +667,22 @@ write_metadata() {
           ($value | split("/") | last)
         end;
 
+      def clean_excerpt($value; $max_length):
+        ($value // "")
+        | gsub("[[:space:]]+"; " ")
+        | sub("^ "; "")
+        | sub(" $"; "")
+        | if . == "" then
+            null
+          elif (length > $max_length) then
+            .[0:($max_length - 3)] + "..."
+          else
+            .
+          end;
+
+      def count_phrase($count; $noun):
+        ($count | tostring) + " " + $noun + (if $count == 1 then "" else "s" end);
+
       (map(select(.type == "session_meta")) | first | .payload // {}) as $meta
       | (
           map(
@@ -674,20 +730,35 @@ write_metadata() {
       | ($tool_calls | length) as $tool_call_count
       | ($tool_outputs | length) as $tool_output_count
       | ($notable_events | length) as $notable_event_count
+      | ($user_messages | first // null) as $first_user_message
+      | ($user_messages | last // null) as $last_user_message
+      | ($assistant_messages | last // null) as $last_assistant_message
       | (
-          (
-            ($user_message_count | tostring) + " user, "
-            + ($assistant_message_count | tostring) + " assistant, "
-            + ($tool_call_count | tostring) + " tool calls, "
-            + ($tool_output_count | tostring) + " tool outputs"
-            + (
-                if $notable_event_count > 0 then
-                  ", " + ($notable_event_count | tostring) + " notable events"
-                else
-                  ""
-                end
-              )
-          )
+          [
+            [
+              count_phrase($user_message_count; "user message"),
+              count_phrase($assistant_message_count; "assistant message")
+            ] | join(", "),
+            (
+              if ($tool_call_count + $tool_output_count) > 0 then
+                [
+                  count_phrase($tool_call_count; "tool call"),
+                  count_phrase($tool_output_count; "tool output")
+                ] | join(", ")
+              else
+                empty
+              end
+            ),
+            (
+              if $notable_event_count > 0 then
+                count_phrase($notable_event_count; "notable event")
+              else
+                empty
+              end
+            )
+          ]
+          | map(select(. != null and . != ""))
+          | if length == 0 then null else join(" | ") end
         ) as $activity_summary
       | (
           [
@@ -733,15 +804,27 @@ write_metadata() {
             events: $include_events
           },
           summary: {
-            first_user_message: ($user_messages | first // null),
-            last_user_message: ($user_messages | last // null),
-            last_assistant_message: ($assistant_messages | last // null),
+            preview: $first_user_message,
+            first_user_message: $first_user_message,
+            last_user_message: $last_user_message,
+            last_assistant_message: $last_assistant_message,
             activity: $activity_summary,
             environment: $environment_summary,
-            one_line: (
+            detail_line: (
               [$activity_summary, $environment_summary]
               | map(select(. != null and . != ""))
               | if length == 0 then null else join(" | ") end
+            ),
+            one_line: (
+              if $first_user_message != null then
+                "Started with: " + $first_user_message
+              else
+                (
+                  [$activity_summary, $environment_summary]
+                  | map(select(. != null and . != ""))
+                  | if length == 0 then null else join(" | ") end
+                )
+              end
             )
           },
           event_count: length,
@@ -807,6 +890,29 @@ write_markdown() {
         + "~~~" + $language + "\n"
         + (if $body == "" then "_empty_" else $body end)
         + "\n~~~";
+
+      def count_phrase($count; $noun):
+        ($count | tostring) + " " + $noun + (if $count == 1 then "" else "s" end);
+
+      def path_tail($value):
+        if ($value // "") == "" then
+          null
+        else
+          ($value | split("/") | last)
+        end;
+
+      def clean_excerpt($value; $max_length):
+        ($value // "")
+        | gsub("[[:space:]]+"; " ")
+        | sub("^ "; "")
+        | sub(" $"; "")
+        | if . == "" then
+            null
+          elif (length > $max_length) then
+            .[0:($max_length - 3)] + "..."
+          else
+            .
+          end;
 
       (reduce .[] as $item (
         {};
@@ -885,6 +991,8 @@ write_markdown() {
             | select(.body != "")
           ]
         ) as $conversation_entries
+      | ($conversation_entries | map(select(.kind == "User") | .body)) as $user_messages
+      | ($conversation_entries | map(select(.kind == "Assistant") | .body)) as $assistant_messages
 
       | (
           [
@@ -911,6 +1019,43 @@ write_markdown() {
               }
           ]
         ) as $event_entries
+      | (($user_messages | first // null) | clean_excerpt(.; 180)) as $first_user_message
+      | (($assistant_messages | last // null) | clean_excerpt(.; 180)) as $last_assistant_message
+      | (
+          [
+            [
+              count_phrase(($user_messages | length); "user message"),
+              count_phrase(($assistant_messages | length); "assistant message")
+            ] | join(", "),
+            (
+              if (($conversation_entries | map(select(.kind == "Tool Call")) | length) + ($conversation_entries | map(select(.kind == "Tool Output")) | length)) > 0 then
+                [
+                  count_phrase(($conversation_entries | map(select(.kind == "Tool Call")) | length); "tool call"),
+                  count_phrase(($conversation_entries | map(select(.kind == "Tool Output")) | length); "tool output")
+                ] | join(", ")
+              else
+                empty
+              end
+            ),
+            (
+              if ($event_entries | length) > 0 then
+                count_phrase(($event_entries | length); "notable event")
+              else
+                empty
+              end
+            )
+          ]
+          | map(select(. != null and . != ""))
+          | if length == 0 then "_unknown_" else join(" | ") end
+        ) as $activity_snapshot
+      | (
+          [
+            if (($meta.cwd // "") != "") then "cwd: " + (path_tail($meta.cwd) // $meta.cwd) else empty end,
+            if (($meta.source // "") != "") then "source: " + $meta.source else empty end,
+            if (($meta.originator // "") != "") then "originator: " + $meta.originator else empty end
+          ]
+          | if length == 0 then "_unknown_" else join(", ") end
+        ) as $environment_snapshot
 
       | ($context_entries
           | to_entries
@@ -1001,6 +1146,13 @@ write_markdown() {
             "- Session Timestamp: `" + pretty_ts($meta.timestamp) + "`",
             "- Updated At: `" + pretty_ts($updated_at) + "`",
             "- CWD: " + (if ($meta.cwd // "") == "" then "_unknown_" else "`" + $meta.cwd + "`" end),
+            "",
+            "## Session Snapshot",
+            "",
+            "- Started with: " + (if $first_user_message == null then "_unknown_" else $first_user_message end),
+            "- Latest assistant reply: " + (if $last_assistant_message == null then "_none captured_" else $last_assistant_message end),
+            "- Activity: " + $activity_snapshot,
+            "- Environment: " + $environment_snapshot,
             "",
             "## Export Notes",
             "",
