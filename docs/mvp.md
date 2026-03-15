@@ -62,7 +62,7 @@ It also now includes lightweight convenience helpers that read only the derived 
 
 Supported convenience flags are intentionally small:
 
-- `codex-session-list`: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--json`
+- `codex-session-list`: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--redaction`, `--json`
 - `codex-session-open`: `--metadata`, `--print`, `--out-dir`
 - `codex-session-latest`: `--metadata`, `--print`, `--out-dir`
 

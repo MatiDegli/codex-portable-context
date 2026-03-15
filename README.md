@@ -240,7 +240,7 @@ The repo now includes small convenience CLIs that operate only on the derived mi
 
 - `./scripts/codex-session-list`
   Lists exported sessions from `out/sessions-index.jsonl`.
-  Useful flags: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--json`.
+  Useful flags: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--redaction`, `--json`.
 - `./scripts/codex-session-open <session-id-or-prefix>`
   Opens the derived Markdown export for one exported session.
   Useful flags: `--metadata`, `--print`, `--out-dir`.
@@ -255,6 +255,7 @@ Examples:
 ```bash
 ./scripts/codex-session-list --latest
 ./scripts/codex-session-list --title galaxy --limit 5
+./scripts/codex-session-list --out-dir ./out-redacted --latest --redaction
 ./scripts/codex-session-open 019cef3a --print
 ./scripts/codex-session-open --metadata 019cef3a --print
 ./scripts/codex-session-latest --print
