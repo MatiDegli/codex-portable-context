@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# List exported sessions from the derived Codex mirror.
+
+set -euo pipefail
+
+readonly SCRIPT_NAME="$(basename "$0")"
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+source "${SCRIPT_DIR}/libcodex-session.sh"
+
+out_dir=""
+limit="0"
+title_filter=""
+id_filter=""
+json_mode="false"
+
+usage() {
+  cat <<EOF
+Usage: ${SCRIPT_NAME} [--out-dir PATH] [--limit N] [--latest] [--title SUBSTRING] [--id SUBSTRING] [--json]
+
+List exported sessions from the derived mirror under out/.
+EOF
+}
+
+while (($# > 0)); do
+  case "$1" in
+    --out-dir)
+      out_dir="${2:?Missing value for --out-dir}"
+      shift 2
+      ;;
+    --limit)
+      limit="${2:?Missing value for --limit}"
+      shift 2
+      ;;
+    --latest)
+      if [[ "${limit}" == "0" ]]; then
+        limit="10"
+      fi
+      shift
+      ;;
+    --title)
+      title_filter="${2:?Missing value for --title}"
+      shift 2
+      ;;
+    --id)
+      id_filter="${2:?Missing value for --id}"
+      shift 2
+      ;;
+    --json)
+      json_mode="true"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'Unknown argument: %s\n' "$1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+mirror_require_cmd jq
+
+if [[ -z "${out_dir}" ]]; then
+  out_dir="$(mirror_default_out_dir)"
+fi
+index_path="$(mirror_require_index "${out_dir}")"
+
+entries_json="$(
+  jq -sc \
+    --arg title_filter "${title_filter}" \
+    --arg id_filter "${id_filter}" \
+    --argjson limit "${limit}" \
+    '
+      map(
+        . + {
+          sort_timestamp: (.updated_at // .session_timestamp // .exported_at // ""),
+          display_title: (.title // ("Session " + .session_id)),
+          markdown_relpath: (.markdown_relpath // ("sessions/" + .session_id + ".md"))
+        }
+      )
+      | map(
+          select(
+            (($title_filter == "") or ((.display_title | ascii_downcase) | contains($title_filter | ascii_downcase)))
+            and (($id_filter == "") or ((.session_id | ascii_downcase) | contains($id_filter | ascii_downcase)))
+          )
+        )
+      | sort_by(.sort_timestamp, .session_id)
+      | reverse
+      | if $limit > 0 then .[:$limit] else . end
+    ' \
+    "${index_path}"
+)"
+
+if [[ "$(jq 'length' <<< "${entries_json}")" -eq 0 ]]; then
+  printf 'No exported sessions matched the current filters.\n' >&2
+  exit 1
+fi
+
+if [[ "${json_mode}" == "true" ]]; then
+  jq 'map(del(.sort_timestamp, .display_title))' <<< "${entries_json}"
+  exit 0
+fi
+
+printf '%-36s  %-19s  %-44s  %s\n' 'SESSION ID' 'UPDATED' 'TITLE' 'MARKDOWN'
+while IFS=$'\t' read -r session_id updated_at title markdown_relpath; do
+  printf '%-36s  %-19s  %-44s  %s\n' \
+    "${session_id}" \
+    "$(mirror_pretty_timestamp "${updated_at}")" \
+    "$(mirror_truncate "${title}" 44)" \
+    "${markdown_relpath}"
+done < <(
+  jq -r '.[] | [.session_id, .sort_timestamp, .display_title, .markdown_relpath] | @tsv' <<< "${entries_json}"
+)

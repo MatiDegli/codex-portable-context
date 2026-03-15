@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Open or print a derived session export from the local mirror.
+
+set -euo pipefail
+
+readonly SCRIPT_NAME="$(basename "$0")"
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+source "${SCRIPT_DIR}/libcodex-session.sh"
+
+out_dir=""
+target_kind="markdown"
+print_only="false"
+selector=""
+
+usage() {
+  cat <<EOF
+Usage: ${SCRIPT_NAME} [--out-dir PATH] [--metadata] [--print] <session-id-or-prefix>
+
+Open or print a derived Markdown or metadata file from the exported mirror.
+EOF
+}
+
+while (($# > 0)); do
+  case "$1" in
+    --out-dir)
+      out_dir="${2:?Missing value for --out-dir}"
+      shift 2
+      ;;
+    --metadata)
+      target_kind="metadata"
+      shift
+      ;;
+    --print)
+      print_only="true"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      if [[ -n "${selector}" ]]; then
+        printf 'Only one session selector is allowed.\n' >&2
+        exit 1
+      fi
+      selector="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "${selector}" ]]; then
+  usage >&2
+  exit 1
+fi
+
+mirror_require_cmd jq
+
+if [[ -z "${out_dir}" ]]; then
+  out_dir="$(mirror_default_out_dir)"
+fi
+index_path="$(mirror_require_index "${out_dir}")"
+entry_json="$(mirror_resolve_unique_entry "${index_path}" "${selector}")"
+target_path="$(mirror_entry_path "${out_dir}" "${target_kind}" "${entry_json}")"
+
+if [[ ! -f "${target_path}" ]]; then
+  printf 'Derived file not found: %s\n' "${target_path}" >&2
+  printf 'Re-run scripts/codex-session-mirror to refresh the mirror.\n' >&2
+  exit 1
+fi
+
+if [[ "${print_only}" == "true" ]]; then
+  printf '%s\n' "${target_path}"
+  exit 0
+fi
+
+mirror_open_file "${target_path}"

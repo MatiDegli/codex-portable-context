@@ -4,7 +4,7 @@
 set -euo pipefail
 
 readonly SCRIPT_NAME="$(basename "$0")"
-readonly EXPORT_FORMAT_VERSION="3"
+readonly EXPORT_FORMAT_VERSION="4"
 
 codex_home="${CODEX_HOME:-$HOME/.codex}"
 source_dir=""
@@ -249,12 +249,14 @@ write_metadata() {
   local file_path="$1"
   local session_id="$2"
   local metadata_path="$3"
-  local source_relpath="$4"
-  local thread_name="$5"
-  local updated_at="$6"
-  local exported_at="$7"
-  local title="$8"
-  local export_profile="$9"
+  local metadata_relpath="$4"
+  local markdown_relpath="$5"
+  local source_relpath="$6"
+  local thread_name="$7"
+  local updated_at="$8"
+  local exported_at="$9"
+  local title="${10}"
+  local export_profile="${11}"
   local temp_path
 
   temp_path="$(mktemp)"
@@ -263,6 +265,8 @@ write_metadata() {
     --arg session_id "${session_id}" \
     --arg title "${title}" \
     --arg source_file "${file_path}" \
+    --arg metadata_relpath "${metadata_relpath}" \
+    --arg markdown_relpath "${markdown_relpath}" \
     --arg source_relpath "${source_relpath}" \
     --arg thread_name "${thread_name}" \
     --arg updated_at "${updated_at}" \
@@ -283,6 +287,8 @@ write_metadata() {
           updated_at: (if $updated_at == "" then null else $updated_at end),
           source_file: $source_file,
           source_relpath: $source_relpath,
+          metadata_relpath: $metadata_relpath,
+          markdown_relpath: $markdown_relpath,
           session_timestamp: ($meta.timestamp // null),
           cwd: ($meta.cwd // null),
           originator: ($meta.originator // null),
@@ -630,10 +636,12 @@ export_session() {
   local session_id="$3"
   local thread_name="$4"
   local updated_at="$5"
-  local metadata_path="$6"
-  local markdown_path="$7"
-  local index_path="$8"
-  local exported_at="$9"
+  local metadata_relpath="$6"
+  local markdown_relpath="$7"
+  local metadata_path="$8"
+  local markdown_path="$9"
+  local index_path="${10}"
+  local exported_at="${11}"
   local title
   local export_profile
 
@@ -644,6 +652,8 @@ export_session() {
     "${file_path}" \
     "${session_id}" \
     "${metadata_path}" \
+    "${metadata_relpath}" \
+    "${markdown_relpath}" \
     "${source_relpath}" \
     "${thread_name}" \
     "${updated_at}" \
@@ -806,6 +816,8 @@ while IFS= read -r file_path; do
       "${session_id}" \
       "${thread_name}" \
       "${updated_at}" \
+      "${metadata_relpath}" \
+      "${markdown_relpath}" \
       "${metadata_path}" \
       "${markdown_path}" \
       "${INDEX_PATH}" \

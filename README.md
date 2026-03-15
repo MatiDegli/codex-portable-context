@@ -53,7 +53,11 @@ Out of scope:
 │   ├── mvp.md
 │   └── security.md
 └── scripts/
-    └── codex-session-mirror
+    ├── codex-session-list
+    ├── codex-session-latest
+    ├── codex-session-mirror
+    ├── codex-session-open
+    └── libcodex-session.sh
 ```
 
 ## Current MVP
@@ -194,6 +198,55 @@ On each run it:
 
 This keeps the mirror read-only with respect to `~/.codex` while making repeated exports much cheaper.
 
+## Lookup Helpers
+
+The repo now includes small convenience CLIs that operate only on the derived mirror under `out/`.
+
+- `./scripts/codex-session-list`
+  Lists exported sessions from `out/sessions-index.jsonl`.
+  Useful flags: `--limit`, `--latest`, `--title`, `--id`, `--json`.
+- `./scripts/codex-session-open <session-id-or-prefix>`
+  Opens the derived Markdown export for one exported session.
+  Useful flags: `--metadata`, `--print`, `--out-dir`.
+- `./scripts/codex-session-latest`
+  Opens the latest exported session.
+  Useful flags: `--metadata`, `--print`, `--out-dir`.
+
+These helpers are intentionally narrow. They are not a search engine, resume engine, or sync subsystem.
+
+Examples:
+
+```bash
+./scripts/codex-session-list --latest
+./scripts/codex-session-list --title galaxy --limit 5
+./scripts/codex-session-open 019cef3a --print
+./scripts/codex-session-open --metadata 019cef3a --print
+./scripts/codex-session-latest --print
+./scripts/codex-session-latest --metadata --print
+```
+
+## Index Contract
+
+The lookup helpers read only the exported mirror index:
+
+- `out/sessions-index.jsonl`
+
+They currently rely on these exported fields:
+
+- `session_id`
+- `title`
+- `updated_at`
+- `session_timestamp`
+- `metadata_relpath`
+- `markdown_relpath`
+
+For compatibility with older mirror outputs, the helpers can fall back to:
+
+- `metadata/<session-id>.json`
+- `sessions/<session-id>.md`
+
+That fallback is only for path resolution. The helpers still operate exclusively on derived files under `out/`.
+
 ## Planned Follow-Up
 
 The next useful steps are still:
@@ -201,7 +254,7 @@ The next useful steps are still:
 1. Improve the normalized per-session metadata record further.
 2. Add optional redaction refinements without becoming a DLP system.
 3. Add transport recipes without touching credentials.
-4. Add lightweight session lookup helpers without turning the project into a resume engine.
+4. Keep the convenience helpers small and explicit instead of growing them into a search or resume layer.
 
 See:
 
