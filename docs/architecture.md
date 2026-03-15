@@ -67,11 +67,17 @@ Current CLI modes:
 scripts/codex-session-mirror
 scripts/codex-session-mirror --redact
 scripts/codex-session-mirror --out-dir ./out-custom
+scripts/codex-session-mirror --no-context
+scripts/codex-session-mirror --no-tools
+scripts/codex-session-mirror --no-events
+scripts/codex-session-mirror --conversation-only
 ```
 
 Transport is secondary. The mirror should make it possible to use tools like Syncthing or `rsync` safely later, without making them part of the core design.
 
 The exporter remains read-only with respect to Codex source state. Redaction, when enabled, is applied only to the derived mirror files.
+
+Export profile flags affect only the derived Markdown view. They do not change the source session logs and do not introduce any write-back path into Codex state.
 
 ## Non-Goals
 

@@ -130,6 +130,19 @@ Default export:
 ./scripts/codex-session-mirror
 ```
 
+Conversation-focused export:
+
+```bash
+./scripts/codex-session-mirror --conversation-only
+```
+
+Custom section filtering:
+
+```bash
+./scripts/codex-session-mirror --no-context --no-events
+./scripts/codex-session-mirror --no-tools
+```
+
 Redacted export:
 
 ```bash
@@ -151,6 +164,19 @@ Custom redacted output path:
   --redact \
   --out-dir ./out-redacted
 ```
+
+## Export Profiles
+
+The default export remains the full reading-oriented mirror.
+
+Optional flags can trim sections from the Markdown export:
+
+- `--no-context`
+- `--no-tools`
+- `--no-events`
+- `--conversation-only`
+
+These flags do not modify source session files, and they do not turn the tool into a sync or resume engine. They only control how much of the derived Markdown view is emitted.
 
 ## Planned Follow-Up
 

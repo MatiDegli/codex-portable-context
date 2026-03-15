@@ -10,12 +10,16 @@ source_dir=""
 output_dir=""
 session_index=""
 redact_mode="false"
+include_context="true"
+include_tools="true"
+include_events="true"
+profile_name="full"
 hostname_short=""
 hostname_fqdn=""
 
 usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [--codex-home PATH] [--source-dir PATH] [--out-dir PATH] [--redact]
+Usage: ${SCRIPT_NAME} [--codex-home PATH] [--source-dir PATH] [--out-dir PATH] [--redact] [--no-context] [--no-tools] [--no-events] [--conversation-only]
 
 Export a read-only mirror of local Codex sessions into a derived output tree.
 EOF
@@ -126,6 +130,7 @@ write_metadata() {
   local updated_at="$6"
   local exported_at="$7"
   local title="$8"
+  local export_profile="$9"
   local temp_path
 
   temp_path="$(mktemp)"
@@ -138,12 +143,17 @@ write_metadata() {
     --arg thread_name "${thread_name}" \
     --arg updated_at "${updated_at}" \
     --arg exported_at "${exported_at}" \
+    --arg export_profile "${export_profile}" \
     --argjson redacted "$( [[ "${redact_mode}" == "true" ]] && printf 'true' || printf 'false' )" \
+    --argjson include_context "$( [[ "${include_context}" == "true" ]] && printf 'true' || printf 'false' )" \
+    --argjson include_tools "$( [[ "${include_tools}" == "true" ]] && printf 'true' || printf 'false' )" \
+    --argjson include_events "$( [[ "${include_events}" == "true" ]] && printf 'true' || printf 'false' )" \
     '
       (map(select(.type == "session_meta")) | first | .payload // {}) as $meta
       | {
           session_id: $session_id,
           title: $title,
+          export_profile: $export_profile,
           thread_name: (if $thread_name == "" then null else $thread_name end),
           exported_at: $exported_at,
           updated_at: (if $updated_at == "" then null else $updated_at end),
@@ -156,6 +166,11 @@ write_metadata() {
           model_provider: ($meta.model_provider // null),
           cli_version: ($meta.cli_version // null),
           redacted: $redacted,
+          markdown_includes: {
+            context: $include_context,
+            tools: $include_tools,
+            events: $include_events
+          },
           event_count: length,
           context_entry_count: (
             map(
@@ -211,6 +226,7 @@ write_markdown() {
   local title="$4"
   local thread_name="$5"
   local updated_at="$6"
+  local export_profile="$7"
   local temp_path
 
   temp_path="$(mktemp)"
@@ -220,6 +236,10 @@ write_markdown() {
     --arg title "${title}" \
     --arg thread_name "${thread_name}" \
     --arg updated_at "${updated_at}" \
+    --arg export_profile "${export_profile}" \
+    --argjson include_context "$( [[ "${include_context}" == "true" ]] && printf 'true' || printf 'false' )" \
+    --argjson include_tools "$( [[ "${include_tools}" == "true" ]] && printf 'true' || printf 'false' )" \
+    --argjson include_events "$( [[ "${include_events}" == "true" ]] && printf 'true' || printf 'false' )" \
     '
       def pretty_ts($value):
         if ($value // "") == "" then
@@ -295,22 +315,30 @@ write_markdown() {
                   body: (.payload.message // "")
                 }
               elif .type == "response_item" and .payload.type == "function_call" then
-                {
-                  kind: "Tool Call",
-                  label: (.payload.name // "unknown"),
-                  timestamp: (.timestamp // null),
-                  body: (
-                    (.payload.arguments | fromjson? // .payload.arguments)
-                    | if type == "string" then . else tojson end
-                  )
-                }
+                if $include_tools then
+                  {
+                    kind: "Tool Call",
+                    label: (.payload.name // "unknown"),
+                    timestamp: (.timestamp // null),
+                    body: (
+                      (.payload.arguments | fromjson? // .payload.arguments)
+                      | if type == "string" then . else tojson end
+                    )
+                  }
+                else
+                  empty
+                end
               elif .type == "response_item" and .payload.type == "function_call_output" then
-                {
-                  kind: "Tool Output",
-                  label: ($call_names[.payload.call_id] // .payload.call_id),
-                  timestamp: (.timestamp // null),
-                  body: (.payload.output // "")
-                }
+                if $include_tools then
+                  {
+                    kind: "Tool Output",
+                    label: ($call_names[.payload.call_id] // .payload.call_id),
+                    timestamp: (.timestamp // null),
+                    body: (.payload.output // "")
+                  }
+                else
+                  empty
+                end
               else
                 empty
               end
@@ -436,25 +464,35 @@ write_markdown() {
             "",
             "## Export Notes",
             "",
+            "- Export profile: `" + $export_profile + "`",
             "- This Markdown omits routine `token_count` and `turn_context` records to reduce noise.",
-            "- Raw source session files remain untouched and are the authoritative input.",
-            ""
+            "- Raw source session files remain untouched and are the authoritative input."
           ]
-          + if ($context_blocks | length) == 0 then
-              []
-            else
-              ["## Session Context", ""] + $context_blocks + [""]
-            end
-          + if ($conversation_blocks | length) == 0 then
-              ["## Conversation", "", "_No conversation entries were found in this session export._", ""]
-            else
-              ["## Conversation", ""] + $conversation_blocks + [""]
-            end
-          + if ($event_blocks | length) == 0 then
-              []
-            else
-              ["## Notable Events", ""] + $event_blocks + [""]
-            end
+          + (if $include_context then [] else ["- Session context omitted by CLI flag."] end)
+          + (if $include_tools then [] else ["- Tool calls and tool outputs omitted by CLI flag."] end)
+          + (if $include_events then [] else ["- Notable lifecycle events omitted by CLI flag."] end)
+          + [""]
+          + (
+              if $include_context and (($context_blocks | length) > 0) then
+                ["## Session Context", ""] + $context_blocks + [""]
+              else
+                []
+              end
+            )
+          + (
+              if ($conversation_blocks | length) == 0 then
+                ["## Conversation", "", "_No conversation entries were found in this session export._", ""]
+              else
+                ["## Conversation", ""] + $conversation_blocks + [""]
+              end
+            )
+          + (
+              if $include_events and (($event_blocks | length) > 0) then
+                ["## Notable Events", ""] + $event_blocks + [""]
+              else
+                []
+              end
+            )
         )
       | join("\n")
     ' "${file_path}" > "${temp_path}"
@@ -473,6 +511,7 @@ export_session() {
   local thread_name
   local updated_at
   local title
+  local export_profile
   local metadata_path
   local markdown_path
 
@@ -487,6 +526,7 @@ export_session() {
   thread_name="$(lookup_session_index_field "${session_id}" "thread_name")"
   updated_at="$(lookup_session_index_field "${session_id}" "updated_at")"
   title="$(derive_session_title "${file_path}" "${thread_name}" "${session_id}")"
+  export_profile="${profile_name}"
 
   metadata_path="${metadata_dir}/${session_id}.json"
   markdown_path="${sessions_dir}/${session_id}.md"
@@ -499,7 +539,8 @@ export_session() {
     "${thread_name}" \
     "${updated_at}" \
     "${exported_at}" \
-    "${title}"
+    "${title}" \
+    "${export_profile}"
 
   write_markdown \
     "${file_path}" \
@@ -507,7 +548,8 @@ export_session() {
     "${markdown_path}" \
     "${title}" \
     "${thread_name}" \
-    "${updated_at}"
+    "${updated_at}" \
+    "${export_profile}"
 
   jq -c . "${metadata_path}" >> "${index_path}"
 }
@@ -528,6 +570,24 @@ while (($# > 0)); do
       ;;
     --redact)
       redact_mode="true"
+      shift
+      ;;
+    --no-context)
+      include_context="false"
+      shift
+      ;;
+    --no-tools)
+      include_tools="false"
+      shift
+      ;;
+    --no-events)
+      include_events="false"
+      shift
+      ;;
+    --conversation-only)
+      include_context="false"
+      include_tools="false"
+      include_events="false"
       shift
       ;;
     -h|--help)
@@ -555,6 +615,14 @@ if [[ -z "${output_dir}" ]]; then
   else
     output_dir="${PWD}/out"
   fi
+fi
+
+profile_name="full"
+if [[ "${include_context}" == "false" || "${include_tools}" == "false" || "${include_events}" == "false" ]]; then
+  profile_name="custom"
+fi
+if [[ "${include_context}" == "false" && "${include_tools}" == "false" && "${include_events}" == "false" ]]; then
+  profile_name="conversation-only"
 fi
 
 if [[ "${output_dir}" == "/" ]]; then
