@@ -60,4 +60,6 @@ Current placeholders:
 
 Redaction is best-effort, not a guaranteed DLP system. The goal is to reduce accidental leakage in portable mirror output without destroying large amounts of useful context.
 
+Metadata now includes a `redaction_report` object with best-effort counts by placeholder and rule. It is intended as an audit hint for the derived mirror, not as proof that all sensitive content was detected.
+
 If you transport the mirror to another device, especially one you do not fully control, prefer a deliberate `--redact` export and review the result as if it may still contain private project context.

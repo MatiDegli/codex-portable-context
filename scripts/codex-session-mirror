@@ -4,7 +4,7 @@
 set -euo pipefail
 
 readonly SCRIPT_NAME="$(basename "$0")"
-readonly EXPORT_FORMAT_VERSION="5"
+readonly EXPORT_FORMAT_VERSION="6"
 readonly LANDING_MARKER="<!-- codex-portable-context: derived-mirror -->"
 
 codex_home="${CODEX_HOME:-$HOME/.codex}"
@@ -234,6 +234,239 @@ redact_stream() {
   '
 }
 
+redaction_artifact_report_json() {
+  local file_path="$1"
+  local counts
+  local home_exact
+  local home_linux
+  local home_macos
+  local user_name
+  local host_fqdn
+  local host_at_short
+  local host_key_short
+  local secret_openai
+  local secret_github
+  local secret_github_pat
+  local secret_aws_access_key
+  local secret_bearer
+  local secret_slack
+
+  if [[ "${redact_mode}" != "true" ]]; then
+    jq -cn '
+      {
+        placeholder_counts: {
+          user: 0,
+          home: 0,
+          host: 0,
+          secret: 0
+        },
+        rule_counts: {
+          home_exact: 0,
+          home_linux: 0,
+          home_macos: 0,
+          user_name: 0,
+          host_fqdn: 0,
+          host_at_short: 0,
+          host_key_short: 0,
+          secret_openai: 0,
+          secret_github: 0,
+          secret_github_pat: 0,
+          secret_aws_access_key: 0,
+          secret_bearer: 0,
+          secret_slack: 0
+        },
+        total_replacements: 0
+      }
+    '
+    return 0
+  fi
+
+  REDACT_USER="${USER:-}" \
+  REDACT_HOME="${HOME:-}" \
+  REDACT_HOST_SHORT="${hostname_short}" \
+  REDACT_HOST_FQDN="${hostname_fqdn}" \
+  counts="$(
+    perl -0ne '
+      my $home_exact = 0;
+      my $home_linux = 0;
+      my $home_macos = 0;
+      my $user_name = 0;
+      my $host_fqdn = 0;
+      my $host_at_short = 0;
+      my $host_key_short = 0;
+      my $secret_openai = 0;
+      my $secret_github = 0;
+      my $secret_github_pat = 0;
+      my $secret_aws_access_key = 0;
+      my $secret_bearer = 0;
+      my $secret_slack = 0;
+
+      if (length($ENV{REDACT_HOME} // q())) {
+        $home_exact = (s{\Q$ENV{REDACT_HOME}\E}{<redacted-home>}g || 0);
+      }
+
+      $home_linux = (s{/home/[^/\s]+}{<redacted-home>}g || 0);
+      $home_macos = (s{/Users/[^/\s]+}{<redacted-home>}g || 0);
+
+      if (length($ENV{REDACT_USER} // q())) {
+        $user_name = (s{\b\Q$ENV{REDACT_USER}\E\b}{<redacted-user>}g || 0);
+      }
+
+      if (length($ENV{REDACT_HOST_FQDN} // q())) {
+        $host_fqdn = (s{\b\Q$ENV{REDACT_HOST_FQDN}\E\b}{<redacted-host>}g || 0);
+      }
+
+      if (length($ENV{REDACT_HOST_SHORT} // q())) {
+        $host_at_short = (s{@\Q$ENV{REDACT_HOST_SHORT}\E\b}{@<redacted-host>}g || 0);
+        $host_key_short = (s{\b(hostname|host)\s*[:=]\s*\Q$ENV{REDACT_HOST_SHORT}\E\b}{$1: <redacted-host>}gi || 0);
+      }
+
+      $secret_openai = (s{\bsk-[A-Za-z0-9_-]{16,}\b}{<redacted-secret>}g || 0);
+      $secret_github = (s{\bgh[pousr]_[A-Za-z0-9]{20,}\b}{<redacted-secret>}g || 0);
+      $secret_github_pat = (s{\bgithub_pat_[A-Za-z0-9_]{20,}\b}{<redacted-secret>}g || 0);
+      $secret_aws_access_key = (s{\bAKIA[0-9A-Z]{16}\b}{<redacted-secret>}g || 0);
+      $secret_bearer = (s{\bBearer\s+[A-Za-z0-9._-]{16,}\b}{Bearer <redacted-secret>}g || 0);
+      $secret_slack = (s{\bxox[baprs]-[A-Za-z0-9-]{10,}\b}{<redacted-secret>}g || 0);
+
+      print join("\t",
+        $home_exact,
+        $home_linux,
+        $home_macos,
+        $user_name,
+        $host_fqdn,
+        $host_at_short,
+        $host_key_short,
+        $secret_openai,
+        $secret_github,
+        $secret_github_pat,
+        $secret_aws_access_key,
+        $secret_bearer,
+        $secret_slack
+      );
+    ' "${file_path}"
+  )"
+
+  IFS=$'\t' read -r \
+    home_exact \
+    home_linux \
+    home_macos \
+    user_name \
+    host_fqdn \
+    host_at_short \
+    host_key_short \
+    secret_openai \
+    secret_github \
+    secret_github_pat \
+    secret_aws_access_key \
+    secret_bearer \
+    secret_slack <<< "${counts}"
+
+  jq -cn \
+    --argjson home_exact "${home_exact}" \
+    --argjson home_linux "${home_linux}" \
+    --argjson home_macos "${home_macos}" \
+    --argjson user_name "${user_name}" \
+    --argjson host_fqdn "${host_fqdn}" \
+    --argjson host_at_short "${host_at_short}" \
+    --argjson host_key_short "${host_key_short}" \
+    --argjson secret_openai "${secret_openai}" \
+    --argjson secret_github "${secret_github}" \
+    --argjson secret_github_pat "${secret_github_pat}" \
+    --argjson secret_aws_access_key "${secret_aws_access_key}" \
+    --argjson secret_bearer "${secret_bearer}" \
+    --argjson secret_slack "${secret_slack}" \
+    '
+      {
+        placeholder_counts: {
+          user: $user_name,
+          home: ($home_exact + $home_linux + $home_macos),
+          host: ($host_fqdn + $host_at_short + $host_key_short),
+          secret: (
+            $secret_openai
+            + $secret_github
+            + $secret_github_pat
+            + $secret_aws_access_key
+            + $secret_bearer
+            + $secret_slack
+          )
+        },
+        rule_counts: {
+          home_exact: $home_exact,
+          home_linux: $home_linux,
+          home_macos: $home_macos,
+          user_name: $user_name,
+          host_fqdn: $host_fqdn,
+          host_at_short: $host_at_short,
+          host_key_short: $host_key_short,
+          secret_openai: $secret_openai,
+          secret_github: $secret_github,
+          secret_github_pat: $secret_github_pat,
+          secret_aws_access_key: $secret_aws_access_key,
+          secret_bearer: $secret_bearer,
+          secret_slack: $secret_slack
+        },
+        total_replacements: (
+          $user_name
+          + $home_exact + $home_linux + $home_macos
+          + $host_fqdn + $host_at_short + $host_key_short
+          + $secret_openai + $secret_github + $secret_github_pat + $secret_aws_access_key + $secret_bearer + $secret_slack
+        )
+      }
+    '
+}
+
+build_redaction_report_json() {
+  local metadata_raw_path="$1"
+  local markdown_raw_path="$2"
+  local metadata_report_json
+  local markdown_report_json
+
+  metadata_report_json="$(redaction_artifact_report_json "${metadata_raw_path}")"
+  markdown_report_json="$(redaction_artifact_report_json "${markdown_raw_path}")"
+
+  jq -cn \
+    --argjson enabled "$( [[ "${redact_mode}" == "true" ]] && printf 'true' || printf 'false' )" \
+    --argjson metadata "${metadata_report_json}" \
+    --argjson markdown "${markdown_report_json}" \
+    '
+      {
+        enabled: $enabled,
+        best_effort: true,
+        note: (
+          if $enabled then
+            "Counts reflect best-effort replacements detected in derived metadata and transcript content before redaction."
+          else
+            "Redaction mode was disabled for this export."
+          end
+        ),
+        artifacts: {
+          metadata: $metadata,
+          markdown: $markdown
+        },
+        placeholder_totals: {
+          user: ($metadata.placeholder_counts.user + $markdown.placeholder_counts.user),
+          home: ($metadata.placeholder_counts.home + $markdown.placeholder_counts.home),
+          host: ($metadata.placeholder_counts.host + $markdown.placeholder_counts.host),
+          secret: ($metadata.placeholder_counts.secret + $markdown.placeholder_counts.secret)
+        },
+        total_replacements: ($metadata.total_replacements + $markdown.total_replacements)
+      }
+    '
+}
+
+attach_redaction_report() {
+  local metadata_raw_path="$1"
+  local report_json="$2"
+  local temp_path
+
+  temp_path="$(mktemp)"
+  jq \
+    --argjson report "${report_json}" \
+    '. + {redaction_report: $report}' \
+    "${metadata_raw_path}" > "${temp_path}"
+  mv "${temp_path}" "${metadata_raw_path}"
+}
+
 write_with_optional_redaction() {
   local temp_path="$1"
   local target_path="$2"
@@ -348,7 +581,7 @@ write_landing() {
 write_metadata() {
   local file_path="$1"
   local session_id="$2"
-  local metadata_path="$3"
+  local metadata_raw_path="$3"
   local metadata_relpath="$4"
   local markdown_relpath="$5"
   local source_relpath="$6"
@@ -357,9 +590,6 @@ write_metadata() {
   local exported_at="$9"
   local title="${10}"
   local export_profile="${11}"
-  local temp_path
-
-  temp_path="$(mktemp)"
 
   jq -s \
     --arg session_id "${session_id}" \
@@ -529,22 +759,17 @@ write_metadata() {
             "Raw source session files remain the authoritative input."
           ]
         }
-    ' "${file_path}" > "${temp_path}"
-
-  write_with_optional_redaction "${temp_path}" "${metadata_path}"
+    ' "${file_path}" > "${metadata_raw_path}"
 }
 
 write_markdown() {
   local file_path="$1"
   local session_id="$2"
-  local markdown_path="$3"
+  local markdown_raw_path="$3"
   local title="$4"
   local thread_name="$5"
   local updated_at="$6"
   local export_profile="$7"
-  local temp_path
-
-  temp_path="$(mktemp)"
 
   jq -rs \
     --arg session_id "${session_id}" \
@@ -810,9 +1035,7 @@ write_markdown() {
             )
         )
       | join("\n")
-    ' "${file_path}" > "${temp_path}"
-
-  write_with_optional_redaction "${temp_path}" "${markdown_path}"
+    ' "${file_path}" > "${markdown_raw_path}"
 }
 
 export_session() {
@@ -829,14 +1052,19 @@ export_session() {
   local exported_at="${11}"
   local title
   local export_profile
+  local metadata_raw_path
+  local markdown_raw_path
+  local redaction_report_json
 
   title="$(derive_session_title "${file_path}" "${thread_name}" "${session_id}")"
   export_profile="${profile_name}"
+  metadata_raw_path="$(mktemp)"
+  markdown_raw_path="$(mktemp)"
 
   write_metadata \
     "${file_path}" \
     "${session_id}" \
-    "${metadata_path}" \
+    "${metadata_raw_path}" \
     "${metadata_relpath}" \
     "${markdown_relpath}" \
     "${source_relpath}" \
@@ -849,11 +1077,16 @@ export_session() {
   write_markdown \
     "${file_path}" \
     "${session_id}" \
-    "${markdown_path}" \
+    "${markdown_raw_path}" \
     "${title}" \
     "${thread_name}" \
     "${updated_at}" \
     "${export_profile}"
+
+  redaction_report_json="$(build_redaction_report_json "${metadata_raw_path}" "${markdown_raw_path}")"
+  attach_redaction_report "${metadata_raw_path}" "${redaction_report_json}"
+  write_with_optional_redaction "${metadata_raw_path}" "${metadata_path}"
+  write_with_optional_redaction "${markdown_raw_path}" "${markdown_path}"
 
   jq -c . "${metadata_path}" >> "${index_path}"
 }

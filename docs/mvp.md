@@ -78,6 +78,8 @@ The exporter now also includes a small derived `summary` object in per-session m
 
 Transport remains optional and external. See `docs/transport.md` for Syncthing and `rsync` recipes that move only the derived mirror.
 
+Per-session metadata and index entries now carry a `redaction_report` object. When `--redact` is used it includes best-effort counts for replacements detected in the derived metadata and transcript content; otherwise it records `enabled: false`.
+
 ## Suggested First Outputs
 
 - `out/README.md`
@@ -99,6 +101,7 @@ The lookup helpers assume `sessions-index.jsonl` exposes at least:
 - `metadata_relpath`
 - `markdown_relpath`
 - `summary.one_line` for the optional summary view in `codex-session-list`
+- `redaction_report`
 
 For older mirror outputs, helper path resolution falls back to `metadata/<session-id>.json` and `sessions/<session-id>.md`.
 

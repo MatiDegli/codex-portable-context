@@ -139,6 +139,8 @@ When redaction is enabled, the script uses conservative placeholders such as:
 - `<redacted-host>`
 - `<redacted-secret>`
 
+Metadata/index entries now include a `redaction_report` object. When `--redact` is enabled it records best-effort replacement counts for the derived metadata and transcript artifacts; otherwise it records `enabled: false`.
+
 This is best-effort redaction, not a guaranteed DLP system. Source session files under `~/.codex/sessions` are never modified.
 
 ## Usage
@@ -274,6 +276,8 @@ They currently rely on these exported fields:
 - `metadata_relpath`
 - `markdown_relpath`
 - `summary.one_line` for the optional `--summary` view in `codex-session-list`
+
+Index entries also include `redaction_report`.
 
 For compatibility with older mirror outputs, the helpers can fall back to:
 
