@@ -1,0 +1,61 @@
+# Architecture
+
+## Intent
+
+This project is a read-only mirror layer for Codex sessions.
+
+It should treat local Codex session files as an input source, not as a format to mutate, merge, or own.
+
+## Core Model
+
+There are three separate layers:
+
+1. Local sensitive state
+2. Local raw session source
+3. Derived mirror output
+
+### 1. Local Sensitive State
+
+Examples:
+
+- `~/.codex/auth.json`
+- `~/.codex/config.toml`
+- local SQLite state
+- local logs and caches
+
+This layer stays local and is not part of the mirror.
+
+### 2. Local Raw Session Source
+
+Primary source:
+
+- `~/.codex/sessions/**/*.jsonl`
+
+This layer is the local input. It may be inspected and parsed, but should not be rewritten by this project.
+
+### 3. Derived Mirror Output
+
+This is the stable export produced by this project for reading, indexing, and cross-device context.
+
+The exact format is still open, but the expected shape is something like:
+
+- `sessions-index.jsonl`
+- `metadata/<session-id>.json`
+- `sessions/<session-id>.md`
+
+## Direction
+
+The main flow should be:
+
+```text
+~/.codex/sessions -> parser/extractor -> normalized mirror -> optional transport layer
+```
+
+Transport is secondary. The mirror should make it possible to use tools like Syncthing or `rsync` safely later, without making them part of the core design.
+
+## Non-Goals
+
+- no write-back to `~/.codex/sessions`
+- no raw sync of all `~/.codex`
+- no credential transport
+- no assumption that internal Codex files are a stable official API
