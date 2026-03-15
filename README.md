@@ -1,84 +1,56 @@
 # codex-portable-context
 
-Small local-first tooling scaffold for cross-device Codex session context.
+`codex-portable-context` turns local Codex session data into a derived, read-only mirror that is easier to browse, move, and review across devices. It is built for safe context portability, not for syncing live `~/.codex` state or writing anything back into Codex.
 
-The current direction is intentionally narrow: this repository is for a read-only mirror of local Codex sessions, not for syncing live mutable state or credentials between machines.
+## What It Does
 
-## Purpose
+- reads local session logs from `~/.codex/sessions`
+- builds a derived mirror under `out/` or `out-redacted/`
+- keeps the source state in `~/.codex` untouched
+- provides small helper commands for listing and opening exported sessions
 
-This project is meant to make Codex session history easier to preserve, inspect, search, and move across devices without treating `~/.codex` as a portable live database.
+## What It Does Not Do
 
-The source of truth stays local:
+- it does not sync raw `~/.codex`
+- it does not copy `auth.json` or runtime state
+- it does not resume sessions
+- it does not add a daemon, backend, or network dependency
 
-- local Codex state under `~/.codex`
-- local session logs under `~/.codex/sessions`
+## Quick Start
 
-The planned output is a separate derived mirror that is safer to read, copy, and index.
-
-Transport is optional and intentionally external to the core tool. The core project creates the mirror; moving that mirror between devices is a separate, user-controlled step.
-
-## Scope
-
-Initial scope:
-
-- scan local Codex session JSONL files
-- extract safe and useful metadata
-- generate a stable read-only mirror format
-- support cross-device reading and context recovery
-- keep credentials and mutable runtime state out of sync
-
-Out of scope:
-
-- syncing all of `~/.codex`
-- syncing `auth.json`
-- writing back into Codex session files
-- treating internal Codex state as a stable public API
-- concurrent bidirectional sync of live session state
-
-## Design Principles
-
-- local-first
-- read-only mirror
-- append-friendly exports
-- explicit separation between source state and derived artifacts
-- zero-credential-sync by default
-- simple enough to inspect and self-host
-
-## Repository Layout
-
-```text
-.
-├── README.md
-├── .gitignore
-├── docs/
-│   ├── architecture.md
-│   ├── mvp.md
-│   ├── security.md
-│   └── transport.md
-└── scripts/
-    ├── codex-session-list
-    ├── codex-session-latest
-    ├── codex-session-mirror
-    ├── codex-session-open
-    ├── libcodex-session.sh
-    └── transport/
-        └── rsync-derived-mirror
-```
-
-## Current MVP
-
-The repository now includes a first local export command:
+Create the default mirror:
 
 ```bash
 ./scripts/codex-session-mirror
 ```
 
-By default it reads:
+Create a redacted mirror:
 
-- `~/.codex/sessions/**/*.jsonl`
-- `~/.codex/session_index.jsonl` when available
+```bash
+./scripts/codex-session-mirror --redact
+```
 
-And writes a derived mirror under:
+List recent exported sessions:
+
+```bash
+./scripts/codex-session-list --latest --summary
+```
+
+Print the mirror landing page path:
+
+```bash
+./scripts/codex-session-open --landing --print
+```
+
+Open the latest exported session:
+
+```bash
+./scripts/codex-session-open --latest
+```
+
+## Mirror Output
+
+By default the exporter writes:
 
 ```text
 out/
@@ -91,36 +63,13 @@ out/
     └── <session-id>.md
 ```
 
-This output is read-only derived data for browsing and context recovery. It is not meant to be written back into Codex state.
+Use `out/README.md` as the main entry point when browsing the mirror on another device. It is generated from the derived index, includes relative links to each transcript and metadata file, and stays self-contained after copy or sync.
 
-Repeated runs reuse unchanged per-session exports when possible. The hidden state file in `out/` is local bookkeeping for the derived mirror, not part of Codex source state.
+Repeated runs reuse unchanged derived artifacts when possible. The hidden state file is local bookkeeping for the mirror output only.
 
-Each export also writes a landing page at `out/README.md` so the mirror stays self-contained and easy to browse on another device without needing the project repo or helper CLIs.
+## Common Commands
 
-Use a dedicated output directory for the mirror. The exporter now intentionally owns `README.md` inside that output directory.
-
-## Export Quality
-
-The current export is optimized for useful reading, not raw event dumping.
-
-The Markdown output now separates:
-
-- session context
-- user messages
-- assistant messages
-- tool calls
-- tool outputs
-- notable lifecycle events
-
-To keep the export readable, routine noise such as `token_count` and `turn_context` records is omitted from Markdown. The raw session source remains untouched and is still the authoritative input.
-
-The root landing page is generated from `sessions-index.jsonl`, newest sessions first, with relative links to each derived transcript and metadata file.
-
-## Redaction
-
-Redaction is optional and only affects the derived mirror output.
-
-Default behavior is non-redacted:
+Default export:
 
 ```bash
 ./scripts/codex-session-mirror
@@ -130,25 +79,6 @@ Redacted export:
 
 ```bash
 ./scripts/codex-session-mirror --redact
-```
-
-When redaction is enabled, the script uses conservative placeholders such as:
-
-- `<redacted-user>`
-- `<redacted-home>`
-- `<redacted-host>`
-- `<redacted-secret>`
-
-Metadata/index entries now include a `redaction_report` object. When `--redact` is enabled it records best-effort replacement counts for the derived metadata and transcript artifacts; otherwise it records `enabled: false`.
-
-This is best-effort redaction, not a guaranteed DLP system. Source session files under `~/.codex/sessions` are never modified.
-
-## Usage
-
-Default export:
-
-```bash
-./scripts/codex-session-mirror
 ```
 
 Conversation-focused export:
@@ -157,66 +87,80 @@ Conversation-focused export:
 ./scripts/codex-session-mirror --conversation-only
 ```
 
-Custom section filtering:
+Trim selected sections:
 
 ```bash
 ./scripts/codex-session-mirror --no-context --no-events
 ./scripts/codex-session-mirror --no-tools
 ```
 
-Redacted export:
+Use a custom output directory:
 
 ```bash
-./scripts/codex-session-mirror --redact
+./scripts/codex-session-mirror --out-dir ./out-custom
 ```
 
-Custom paths:
+## Helper Commands
+
+These commands operate only on the derived mirror, never on raw `~/.codex`.
+
+- `./scripts/codex-session-list`
+  Useful flags: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--redaction`, `--json`
+- `./scripts/codex-session-open <session-id-or-prefix>`
+  Useful flags: `--metadata`, `--print`, `--out-dir`, `--landing`, `--latest`
+- `./scripts/codex-session-latest`
+  Useful flags: `--metadata`, `--print`, `--out-dir`
+
+Examples:
 
 ```bash
-./scripts/codex-session-mirror \
-  --codex-home "$HOME/.codex" \
-  --out-dir ./out
+./scripts/codex-session-list --latest
+./scripts/codex-session-list --title galaxy --limit 5
+./scripts/codex-session-list --out-dir ./out-redacted --latest --redaction
+./scripts/codex-session-open 019cef3a --print
+./scripts/codex-session-open --metadata 019cef3a --print
+./scripts/codex-session-latest --print
 ```
 
-Custom redacted output path:
+## Export Quality
 
-```bash
-./scripts/codex-session-mirror \
-  --redact \
-  --out-dir ./out-redacted
-```
+The transcript export is optimized for useful reading. It separates:
 
-## Export Profiles
+- session context
+- user messages
+- assistant messages
+- tool calls
+- tool outputs
+- notable lifecycle events
 
-The default export remains the full reading-oriented mirror.
+Routine low-value records such as `token_count` and `turn_context` are omitted from Markdown to keep exports readable. This filtering is conservative and documented; the source session files remain unchanged.
 
-Optional flags can trim sections from the Markdown export:
+Each session also gets a small mechanical summary in metadata and in `sessions-index.jsonl` so recent work is easier to scan quickly.
 
-- `--no-context`
-- `--no-tools`
-- `--no-events`
-- `--conversation-only`
+## Redaction
 
-These flags do not modify source session files, and they do not turn the tool into a sync or resume engine. They only control how much of the derived Markdown view is emitted.
+Redaction is optional and applies only to derived output.
 
-## Incremental Export
+When enabled, the exporter uses conservative placeholders such as:
 
-The exporter now reuses unchanged per-session artifacts by default.
+- `<redacted-user>`
+- `<redacted-home>`
+- `<redacted-host>`
+- `<redacted-secret>`
 
-On each run it:
+Per-session metadata and index entries include a `redaction_report` object so you can see whether redaction ran and how many best-effort replacements were made.
 
-- checks whether a session input still matches the last exported fingerprint
-- re-renders only sessions whose source or export-relevant inputs changed
-- rebuilds `sessions-index.jsonl` from the current derived outputs
-- removes stale per-session mirror files when source sessions disappear or their session ids change
-
-This keeps the mirror read-only with respect to `~/.codex` while making repeated exports much cheaper.
+Redaction is helpful for safer transport, but it is not a guaranteed DLP or privacy system. Review the result before sharing or moving it to a less-trusted device.
 
 ## Transport
 
-The recommended thing to move between devices is only the derived mirror under `out/` or `out-redacted/`.
+Transport is optional and intentionally outside the core tool.
 
-This repo does not recommend syncing raw `~/.codex`. In particular, do not treat these as transport targets:
+Recommended transport target:
+
+- the derived mirror only, such as `out/` or `out-redacted/`
+
+Do not treat these as transport targets:
 
 - `~/.codex/auth.json`
 - `~/.codex/config.toml`
@@ -225,52 +169,18 @@ This repo does not recommend syncing raw `~/.codex`. In particular, do not treat
 - `~/.codex/tmp/`
 - `~/.codex/shell_snapshots/`
 
-Transport recipes live in [transport.md](docs/transport.md) and stay outside the core exporter:
+For transport recipes, see [docs/transport.md](docs/transport.md). The documented approaches are:
 
-- Syncthing, with a bias toward one-way or clearly-owned flows
-- `rsync`, for explicit directional copy
-
-Transport is optional. You can use the project entirely locally without ever moving the mirror off the machine that generated it.
-
-The landing page in `out/README.md` also makes transported mirrors easier to inspect directly after copy or sync.
-
-## Lookup Helpers
-
-The repo now includes small convenience CLIs that operate only on the derived mirror under `out/`.
-
-- `./scripts/codex-session-list`
-  Lists exported sessions from `out/sessions-index.jsonl`.
-  Useful flags: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--redaction`, `--json`.
-- `./scripts/codex-session-open <session-id-or-prefix>`
-  Opens the derived Markdown export for one exported session.
-  Useful flags: `--metadata`, `--print`, `--out-dir`, `--landing`, `--latest`.
-- `./scripts/codex-session-latest`
-  Opens the latest exported session.
-  Useful flags: `--metadata`, `--print`, `--out-dir`.
-
-These helpers are intentionally narrow. They are not a search engine, resume engine, or sync subsystem.
-
-Examples:
-
-```bash
-./scripts/codex-session-list --latest
-./scripts/codex-session-list --title galaxy --limit 5
-./scripts/codex-session-list --out-dir ./out-redacted --latest --redaction
-./scripts/codex-session-open --landing --print
-./scripts/codex-session-open --latest --print
-./scripts/codex-session-open 019cef3a --print
-./scripts/codex-session-open --metadata 019cef3a --print
-./scripts/codex-session-latest --print
-./scripts/codex-session-latest --metadata --print
-```
+- Syncthing, with a bias toward one writer and a read-oriented copy
+- one-way `rsync`, for explicit directional control
 
 ## Index Contract
 
-The lookup helpers read only the exported mirror index:
+The helper commands read only the exported mirror index:
 
 - `out/sessions-index.jsonl`
 
-They currently rely on these exported fields:
+They currently rely on these fields:
 
 - `session_id`
 - `title`
@@ -278,47 +188,17 @@ They currently rely on these exported fields:
 - `session_timestamp`
 - `metadata_relpath`
 - `markdown_relpath`
-- `summary.one_line` for the optional `--summary` view in `codex-session-list`
+- `summary.one_line`
+- `redaction_report`
 
-Index entries also include `redaction_report`.
-
-For compatibility with older mirror outputs, the helpers can fall back to:
+For older mirror outputs, path resolution can fall back to:
 
 - `metadata/<session-id>.json`
 - `sessions/<session-id>.md`
 
-That fallback is only for path resolution. The helpers still operate exclusively on derived files under `out/`.
+## Docs
 
-## Derived Summaries
-
-The exporter now writes a small mechanical per-session summary into metadata and the combined index.
-
-This summary is derived from the exported session content and includes:
-
-- first user message excerpt
-- last user message excerpt
-- last assistant message excerpt
-- an activity line based on message and tool counts
-- a short environment line from exported fields like `cwd`, `source`, and `originator`
-
-It is intentionally deterministic and non-generative. The goal is to make recent sessions easier to scan, not to add an AI summary layer.
-
-## Planned Follow-Up
-
-The next useful steps are still:
-
-1. Add optional redaction refinements without becoming a DLP system.
-2. Keep the convenience helpers small and explicit instead of growing them into a search or resume layer.
-3. Add more reading-oriented export polish only when it stays deterministic and local-first.
-4. Refine transport guidance only if it stays clearly outside the core mirror logic.
-
-See:
-
-- [architecture.md](docs/architecture.md)
-- [security.md](docs/security.md)
-- [mvp.md](docs/mvp.md)
-- [transport.md](docs/transport.md)
-
-## Status
-
-This repository now contains the first read-only export command plus the design brief for the next iterations.
+- [docs/architecture.md](docs/architecture.md)
+- [docs/security.md](docs/security.md)
+- [docs/mvp.md](docs/mvp.md)
+- [docs/transport.md](docs/transport.md)
