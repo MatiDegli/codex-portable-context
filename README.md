@@ -83,6 +83,7 @@ And writes a derived mirror under:
 ```text
 out/
 ├── .codex-session-mirror-state.jsonl
+├── README.md
 ├── sessions-index.jsonl
 ├── metadata/
 │   └── <session-id>.json
@@ -93,6 +94,10 @@ out/
 This output is read-only derived data for browsing and context recovery. It is not meant to be written back into Codex state.
 
 Repeated runs reuse unchanged per-session exports when possible. The hidden state file in `out/` is local bookkeeping for the derived mirror, not part of Codex source state.
+
+Each export also writes a landing page at `out/README.md` so the mirror stays self-contained and easy to browse on another device without needing the project repo or helper CLIs.
+
+Use a dedicated output directory for the mirror. The exporter now intentionally owns `README.md` inside that output directory.
 
 ## Export Quality
 
@@ -108,6 +113,8 @@ The Markdown output now separates:
 - notable lifecycle events
 
 To keep the export readable, routine noise such as `token_count` and `turn_context` records is omitted from Markdown. The raw session source remains untouched and is still the authoritative input.
+
+The root landing page is generated from `sessions-index.jsonl`, newest sessions first, with relative links to each derived transcript and metadata file.
 
 ## Redaction
 
@@ -222,6 +229,8 @@ Transport recipes live in [transport.md](docs/transport.md) and stay outside the
 - `rsync`, for explicit directional copy
 
 Transport is optional. You can use the project entirely locally without ever moving the mirror off the machine that generated it.
+
+The landing page in `out/README.md` also makes transported mirrors easier to inspect directly after copy or sync.
 
 ## Lookup Helpers
 

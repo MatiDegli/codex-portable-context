@@ -49,6 +49,7 @@ Section filtering:
 It currently exports:
 
 - a local state file for incremental derived export reuse
+- a root landing page for browsing the mirror directly
 - a per-session metadata JSON file
 - a combined JSONL index
 - a Markdown transcript view with clearer separation between context, user messages, assistant messages, tool calls, tool outputs, and notable events
@@ -79,12 +80,15 @@ Transport remains optional and external. See `docs/transport.md` for Syncthing a
 
 ## Suggested First Outputs
 
+- `out/README.md`
 - `out/sessions-index.jsonl`
 - `out/metadata/<session-id>.json`
 - `out/sessions/<session-id>.md`
 - `out/.codex-session-mirror-state.jsonl`
 
 These are now the concrete first outputs of the repo: stable, human-readable, and sync-friendlier than raw local state.
+
+The root `out/README.md` is generated from the derived index rather than from raw Codex session files. It is a reading convenience layer, not a search or resume subsystem.
 
 The lookup helpers assume `sessions-index.jsonl` exposes at least:
 

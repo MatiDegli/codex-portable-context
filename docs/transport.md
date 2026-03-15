@@ -10,6 +10,8 @@ Recommended transport unit:
 
 - the derived mirror only
 
+Because the mirror now includes a root `README.md`, a copied or synced mirror has a natural entrypoint for browsing on the destination device.
+
 Not recommended as transport:
 
 - raw `~/.codex`

@@ -5,6 +5,7 @@ set -euo pipefail
 
 readonly SCRIPT_NAME="$(basename "$0")"
 readonly EXPORT_FORMAT_VERSION="5"
+readonly LANDING_MARKER="<!-- codex-portable-context: derived-mirror -->"
 
 codex_home="${CODEX_HOME:-$HOME/.codex}"
 source_dir=""
@@ -243,6 +244,105 @@ write_with_optional_redaction() {
   else
     mv "${temp_path}" "${target_path}"
   fi
+}
+
+write_landing() {
+  local index_path="$1"
+  local landing_path="$2"
+  local exported_at="$3"
+  local landing_redacted="$4"
+  local temp_path
+
+  temp_path="$(mktemp)"
+
+  if [[ -f "${landing_path}" ]] && ! grep -Fq "${LANDING_MARKER}" "${landing_path}"; then
+    printf 'Refusing to overwrite existing non-mirror README: %s\n' "${landing_path}" >&2
+    printf 'Choose a dedicated output directory for the derived mirror.\n' >&2
+    rm -f "${temp_path}"
+    exit 1
+  fi
+
+  jq -rs \
+    --arg exported_at "${exported_at}" \
+    --arg landing_marker "${LANDING_MARKER}" \
+    --argjson landing_redacted "$( [[ "${landing_redacted}" == "true" ]] && printf 'true' || printf 'false' )" \
+    '
+      def pretty_ts($value):
+        if ($value // "") == "" then
+          "unknown"
+        else
+          ($value | sub("\\.[0-9]+Z$"; "Z") | gsub("T"; " "))
+        end;
+
+      def session_sort_key:
+        (.updated_at // .session_timestamp // .exported_at // "");
+
+      def yes_no($value):
+        if $value then "yes" else "no" end;
+
+      def render_session($entry):
+        [
+          "### " + ($entry.title // ("Session " + $entry.session_id)),
+          "",
+          "- Session ID: `" + $entry.session_id + "`",
+          "- Updated: `" + pretty_ts(($entry | session_sort_key)) + "`",
+          "- Transcript: [" + ($entry.markdown_relpath // ("sessions/" + $entry.session_id + ".md")) + "](" + ($entry.markdown_relpath // ("sessions/" + $entry.session_id + ".md")) + ")",
+          "- Metadata: [" + ($entry.metadata_relpath // ("metadata/" + $entry.session_id + ".json")) + "](" + ($entry.metadata_relpath // ("metadata/" + $entry.session_id + ".json")) + ")"
+        ]
+        + (
+            if (($entry.summary.one_line // "") == "") then
+              []
+            else
+              ["- Summary: " + $entry.summary.one_line]
+            end
+          )
+        + [""];
+
+      (sort_by(session_sort_key, .session_id) | reverse) as $entries
+      | ($entries | length) as $session_count
+      | (($entries[0] | session_sort_key) // "") as $latest_timestamp
+      | (
+          if $session_count == 0 then
+            $landing_redacted
+          else
+            ($entries | any(.redacted == true))
+          end
+        ) as $is_redacted
+      | (
+          [
+            $landing_marker,
+            "# Codex Portable Context Mirror",
+            "",
+            "This directory is a derived read-only mirror generated from local Codex session exports.",
+            "It is intended for browsing and transport. It is not a writable Codex state directory.",
+            "",
+            "## Mirror Summary",
+            "",
+          "- Exported at: `" + pretty_ts($exported_at) + "`",
+          "- Sessions: `" + ($session_count | tostring) + "`",
+          "- Latest session update: `" + pretty_ts($latest_timestamp) + "`",
+            "- Redacted export: `" + yes_no($is_redacted) + "`",
+            "- Session index: [sessions-index.jsonl](sessions-index.jsonl)",
+            ""
+          ]
+          + if $session_count == 0 then
+              [
+                "## Sessions",
+                "",
+                "_No sessions are currently exported in this mirror._",
+                ""
+              ]
+            else
+              (
+                ["## Sessions", ""]
+                + ($entries | map(render_session(.)) | add)
+              )
+            end
+        )
+      | join("\n")
+    ' "${index_path}" > "${temp_path}"
+
+  write_with_optional_redaction "${temp_path}" "${landing_path}"
 }
 
 write_metadata() {
@@ -852,6 +952,7 @@ fi
 readonly METADATA_DIR="${output_dir}/metadata"
 readonly SESSIONS_DIR="${output_dir}/sessions"
 readonly INDEX_PATH="${output_dir}/sessions-index.jsonl"
+readonly LANDING_PATH="${output_dir}/README.md"
 readonly STATE_PATH="${output_dir}/.codex-session-mirror-state.jsonl"
 readonly EXPORTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -935,6 +1036,7 @@ for source_relpath in "${!previous_signature_by_relpath[@]}"; do
 done
 
 mv "${state_temp_path}" "${STATE_PATH}"
+write_landing "${INDEX_PATH}" "${LANDING_PATH}" "${EXPORTED_AT}" "${redact_mode}"
 
 if [[ "${session_count}" -eq 0 ]]; then
   printf 'No session files found under %s (removed %d stale derived file(s))\n' \
