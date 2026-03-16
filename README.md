@@ -188,6 +188,13 @@ Phase 5 now also includes an initial Python open entrypoint:
 ./.venv/bin/python -m codex_portable_context.cli.open --landing
 ```
 
+Phase 6 now also includes an initial Python latest entrypoint:
+
+```bash
+./.venv/bin/python -m codex_portable_context.cli.latest --print
+./.venv/bin/python -m codex_portable_context.cli.latest --metadata --print
+```
+
 ## Python v2 Baseline
 
 The planned Python v2 work uses this runtime policy:

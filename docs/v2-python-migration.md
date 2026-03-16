@@ -241,6 +241,12 @@ Current status:
 
 - keep it thin on top of the shared resolver/index layer
 
+Current status:
+
+- an initial Python latest CLI now exists at `python -m codex_portable_context.cli.latest`
+- it stays intentionally thin by delegating to the Python open CLI with `--latest`
+- it supports `--out-dir`, `--metadata`, and `--print`
+
 ### Phase 7: Decide Bash wrapper policy
 
 - either keep Bash scripts as thin compatibility wrappers
