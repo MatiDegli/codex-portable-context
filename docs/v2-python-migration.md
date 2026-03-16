@@ -231,6 +231,12 @@ Current status:
 - move session resolution and opener behavior into shared Python logic
 - handle Windows and Linux open behavior deliberately
 
+Current status:
+
+- an initial Python open CLI now exists at `python -m codex_portable_context.cli.open`
+- it supports `--landing`, `--latest`, `--metadata`, and `--print`
+- it resolves only derived mirror files and does not touch raw `~/.codex`
+
 ### Phase 6: Port `codex-session-latest`
 
 - keep it thin on top of the shared resolver/index layer
