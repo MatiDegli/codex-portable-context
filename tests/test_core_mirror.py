@@ -62,11 +62,15 @@ def test_export_mirror_writes_contract_files_and_reuses_state(tmp_path: Path) ->
     assert f"[sessions/{session_id}.md](sessions/{session_id}.md)" in landing_text
     assert "[index.html](index.html)" in landing_text
     assert f'href="reader/{session_id}.html"' in reader_index_text
+    assert 'href="handoffs/session-1234.md"' in reader_index_text
     assert "Standard export" in reader_index_text
     assert "../index.html" in reader_text
     assert "Jump to snapshot" in reader_text
+    assert "Jump to handoff" in reader_text
     assert "Jump to raw metadata" in reader_text
     assert "Raw transcript Markdown" in reader_text
+    assert "Handoff Markdown" in reader_text
+    assert "codex-session-handoff session-" in reader_text
     assert "Please mirror /home/tester/project" in reader_text
 
 

@@ -299,6 +299,8 @@ def render_session_reader(
     export_profile = _escape_text(str(entry.get("export_profile") or "unknown profile"))
     transcript_rel = "../" + str(entry.get("markdown_relpath") or f"sessions/{session_id}.md")
     metadata_rel = "../" + str(entry.get("metadata_relpath") or f"metadata/{session_id}.json")
+    handoff_markdown_rel = f"../handoffs/{session_id}.md"
+    handoff_json_rel = f"../handoffs/{session_id}.json"
 
     metadata_rows = [
         ("Session ID", session_id),
@@ -470,6 +472,11 @@ def render_session_reader(
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }}
+    .note {{
+      color: var(--muted);
+      font-size: 0.94rem;
+      line-height: 1.55;
+    }}
     .badge {{
       display: inline-block;
       padding: 4px 10px;
@@ -526,10 +533,13 @@ def render_session_reader(
         <a href="../README.md">Mirror README</a>
         <a href="{_escape_attr(transcript_rel)}">Raw transcript Markdown</a>
         <a href="{_escape_attr(metadata_rel)}">Metadata JSON</a>
+        <a href="{_escape_attr(handoff_markdown_rel)}">Handoff Markdown</a>
+        <a href="{_escape_attr(handoff_json_rel)}">Handoff JSON</a>
       </div>
       <nav class="subnav" aria-label="Session sections">
         <a href="#snapshot">Jump to snapshot</a>
         <a href="#metadata">Jump to metadata</a>
+        <a href="#handoff">Jump to handoff</a>
         <a href="#transcript">Jump to transcript</a>
         <a href="#raw-metadata">Jump to raw metadata</a>
       </nav>
@@ -541,6 +551,18 @@ def render_session_reader(
         <div id="metadata"></div>
         <h2>Metadata</h2>
         <table>{metadata_rows_html}</table>
+        <div id="handoff"></div>
+        <h2>Handoff</h2>
+        <div class="detail">
+          <strong>Bundle paths</strong>
+          <a href="{_escape_attr(handoff_markdown_rel)}">Markdown handoff</a><br>
+          <a href="{_escape_attr(handoff_json_rel)}">JSON handoff</a>
+        </div>
+        <p class="note">
+          If the handoff bundle has not been generated yet, create it with
+          <code>codex-session-handoff {session_id[:8]}</code> or
+          <code>codex-session-handoff --latest</code>.
+        </p>
       </aside>
       <section class="panel" id="transcript">
         <h2>Transcript</h2>
@@ -573,6 +595,7 @@ def _render_index_card(entry: dict[str, Any]) -> str:
     reader_relpath = str(entry.get("reader_relpath") or "")
     markdown_relpath = str(entry.get("markdown_relpath") or "")
     metadata_relpath = str(entry.get("metadata_relpath") or "")
+    handoff_relpath = f"handoffs/{session_id}.md"
     badges = []
     if entry.get("redacted"):
         badges.append('<span class="badge">Redacted</span>')
@@ -600,6 +623,7 @@ def _render_index_card(entry: dict[str, Any]) -> str:
         f'<a class="primary-link" href="{_escape_attr(reader_relpath)}">Open reader</a>'
         f'<a href="{_escape_attr(markdown_relpath)}">Transcript Markdown</a>'
         f'<a href="{_escape_attr(metadata_relpath)}">Metadata JSON</a>'
+        f'<a href="{_escape_attr(handoff_relpath)}">Handoff bundle</a>'
         "</div>"
         "</article>"
     )
