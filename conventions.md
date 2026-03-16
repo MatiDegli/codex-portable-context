@@ -47,10 +47,25 @@ Bootstrap Python v2 environment:
 ./scripts/bootstrap-python-v2
 ```
 
+Bootstrap Python v2 environment on native Windows PowerShell:
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+```
+
 Validate Python v2 baseline:
 
 ```bash
 ./scripts/validate-python-v2
+```
+
+Validate Python v2 baseline on native Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check src tests
+.\.venv\Scripts\python.exe -m mypy src
+.\.venv\Scripts\python.exe -m pytest
 ```
 
 Current v1 mirror command:

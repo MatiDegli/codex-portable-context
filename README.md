@@ -268,6 +268,8 @@ After the editable install, the recommended commands are:
 .venv/bin/codex-session-latest --help
 ```
 
+For the native Windows setup checklist and the first concrete validation record, see [docs/windows-native-validation.md](docs/windows-native-validation.md).
+
 ## Python v2 Baseline
 
 The planned Python v2 work uses this runtime policy:
@@ -320,14 +322,14 @@ Current status:
 - Linux is the main day-to-day development and validation environment
 - Python v2 is designed for Linux and Windows native usage
 - cross-OS path handling and Windows-style path redaction are covered by tests
-- native Windows command validation is planned explicitly and documented
+- native Windows setup is documented and an initial native validation record now exists
 
 What is not being claimed yet:
 
-- this repo is not claiming completed Windows-native validation from this Linux environment
+- this repo is not claiming completed Windows-native coverage across all workflows
 - the Bash wrappers are not the cross-platform path
 
-For the concrete Windows-native setup and validation checklist, see [docs/windows-native-validation.md](docs/windows-native-validation.md).
+For the concrete Windows-native setup checklist and validation record, see [docs/windows-native-validation.md](docs/windows-native-validation.md).
 
 ## Export Quality
 

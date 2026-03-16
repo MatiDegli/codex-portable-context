@@ -62,9 +62,11 @@ def zero_artifact_report() -> dict[str, object]:
         },
         "rule_counts": {
             "home_exact": 0,
+            "home_exact_json": 0,
             "home_linux": 0,
             "home_macos": 0,
             "home_windows": 0,
+            "home_windows_json": 0,
             "user_name": 0,
             "host_fqdn": 0,
             "host_at_short": 0,
@@ -156,6 +158,16 @@ def build_rules(
                 re.NOFLAG,
             )
         )
+        if "\\" in context.home_dir:
+            rules.append(
+                (
+                    "home_exact_json",
+                    "home",
+                    re.escape(context.home_dir.replace("\\", "\\\\")),
+                    "<redacted-home>",
+                    re.NOFLAG,
+                )
+            )
     rules.extend(
         [
             ("home_linux", "home", r"/home/[^/\s]+", "<redacted-home>", re.NOFLAG),
@@ -164,6 +176,13 @@ def build_rules(
                 "home_windows",
                 "home",
                 r"[A-Za-z]:\\Users\\[^\\\s]+",
+                "<redacted-home>",
+                re.NOFLAG,
+            ),
+            (
+                "home_windows_json",
+                "home",
+                r"[A-Za-z]:\\\\Users\\\\[^\\\s\"]+",
                 "<redacted-home>",
                 re.NOFLAG,
             ),

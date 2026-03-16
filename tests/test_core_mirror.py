@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from codex_portable_context.core.mirror import MirrorExportConfig, export_mirror
+from codex_portable_context.core.redaction import RedactionContext, redact_text
 
 
 def test_export_mirror_writes_contract_files_and_reuses_state(tmp_path: Path) -> None:
@@ -95,13 +96,33 @@ def test_export_mirror_redacts_derived_output(tmp_path: Path) -> None:
     assert result.redacted is True
     assert "<redacted-home>" in metadata_text
     assert "<redacted-secret>" in metadata_text
-    assert "C:\\Users\\tester\\project" not in metadata_text
+    assert "C:\\\\Users\\\\tester\\\\project" not in metadata_text
+    assert "<redacted-home>\\\\project" in metadata_text
     assert "<redacted-secret>" in markdown_text
     assert "Redacted export" in reader_text
     assert "&lt;redacted-home&gt;" in reader_text
     assert "&lt;redacted-secret&gt;" in reader_text
     assert metadata["redaction_report"]["enabled"] is True
     assert metadata["redaction_report"]["total_replacements"] > 0
+
+
+def test_redact_text_redacts_json_escaped_windows_paths() -> None:
+    result = redact_text(
+        r'{"cwd":"C:\\Users\\tester\\project","note":"C:\\Users\\Alejandro\\docs"}',
+        RedactionContext(
+            user_name="Alejandro",
+            home_dir=r"C:\Users\Alejandro",
+            hostname_short="host",
+            hostname_fqdn="host",
+        ),
+    )
+
+    assert r"C:\\Users\\tester" not in result.text
+    assert r"C:\\Users\\Alejandro" not in result.text
+    assert r'"cwd":"<redacted-home>\\project"' in result.text
+    assert r'"note":"<redacted-home>\\docs"' in result.text
+    assert result.report["rule_counts"]["home_exact_json"] == 1
+    assert result.report["rule_counts"]["home_windows_json"] == 1
 
 
 def write_fixture_session(tmp_path: Path) -> tuple[Path, Path]:

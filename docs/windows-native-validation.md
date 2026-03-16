@@ -17,12 +17,12 @@ Already covered in the repo today:
 - Python is the primary implementation path
 - Windows-style path redaction is covered by tests
 - opener logic has an explicit Windows path via `os.startfile()`
-- derived mirror generation, listing, opening, and latest-session flows exist in Python
+- derived mirror generation, listing, opening, latest-session, and handoff flows exist in Python
 
-Not yet claimed from this environment:
+Not yet claimed in general:
 
-- full native Windows validation
-- PowerShell-specific ergonomics beyond the documented commands below
+- full Windows-native coverage across all workflows and environments
+- PowerShell ergonomics beyond the commands documented below
 - packaged distribution beyond editable install
 
 ## Recommended Windows Setup
@@ -164,3 +164,53 @@ Windows-native validation should end with:
 - Windows-style redaction behavior confirmed on real data
 
 If any of those fail, fix the Python implementation directly. Do not add Windows-specific Bash workarounds.
+
+## Native Windows Validation Record
+
+Validation date:
+
+- 2026-03-16
+
+Validated host:
+
+- OS reported by PowerShell: `Microsoft Windows NT 10.0.26200.0`
+- Shell: `PowerShell 5.1.26100.7920`
+- Project interpreter: `Python 3.13.5` via `py -3.13`
+- Host default `python`: `Python 3.10.11`
+
+Installation path actually executed:
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+```
+
+What was validated on that machine:
+
+- installed entrypoint help for `codex-session-mirror`, `codex-session-list`, `codex-session-open`, and `codex-session-latest`
+- module help for `python -m codex_portable_context.cli.{mirror,list,open,latest}`
+- fixture-backed mirror export, list, `open --print`, `open --metadata --print`, `latest --print`, and `latest --metadata --print`
+- real local-source mirror export from `%USERPROFILE%\.codex\sessions`
+- real local-source `list --latest --summary --details`
+- real local-source `open --latest --print`
+- real local-source `latest --metadata --print`
+- CRLF fixture parsing and output generation
+- default Codex home resolution to `%USERPROFILE%\.codex`
+
+Windows-specific issues found in that pass:
+
+- editable install was missing native `codex-session-*` console entrypoints before `project.scripts` was added
+- Windows home paths inside JSON metadata were only partially redacted before JSON-escaped backslash handling was added
+- Bash compatibility wrappers were not treated as the native Windows execution path
+
+Fixes kept from that pass because they remain compatible with the current repo:
+
+- `project.scripts` entrypoints for the Python CLIs
+- JSON-escaped Windows home path redaction in the Python redactor
+- installed-entrypoint coverage in the test suite
+
+What remains unverified from that pass:
+
+- actual GUI opener behavior without `--print`
+- Bash wrapper support as a native Windows path
+- wider performance coverage beyond the local source used during validation
