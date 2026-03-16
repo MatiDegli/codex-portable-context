@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from .contract import EXPORT_FORMAT_VERSION
+from .contract import EXPORT_FORMAT_VERSION, READER_DIRNAME
 from .redaction import RedactionContext
 
 
@@ -20,6 +20,7 @@ class StateRecord:
     session_id: str
     metadata_relpath: str
     markdown_relpath: str
+    reader_relpath: str
 
 
 def file_fingerprint(path: Path) -> str:
@@ -87,6 +88,10 @@ def load_state(path: Path) -> dict[str, StateRecord]:
                 session_id=str(raw["session_id"]),
                 metadata_relpath=str(raw["metadata_relpath"]),
                 markdown_relpath=str(raw["markdown_relpath"]),
+                reader_relpath=str(
+                    raw.get("reader_relpath")
+                    or f"{READER_DIRNAME}/{raw['session_id']}.html"
+                ),
             )
             state[record.source_relpath] = record
     return state
@@ -103,6 +108,7 @@ def save_state(path: Path, records: list[StateRecord]) -> None:
                 "session_id": record.session_id,
                 "metadata_relpath": record.metadata_relpath,
                 "markdown_relpath": record.markdown_relpath,
+                "reader_relpath": record.reader_relpath,
             },
             separators=(",", ":"),
             ensure_ascii=False,

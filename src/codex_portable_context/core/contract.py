@@ -7,11 +7,13 @@ from pathlib import Path
 
 LANDING_FILENAME = "README.md"
 LANDING_MARKER = "<!-- codex-portable-context: derived-mirror -->"
+HTML_INDEX_FILENAME = "index.html"
 INDEX_FILENAME = "sessions-index.jsonl"
 STATE_FILENAME = ".codex-session-mirror-state.jsonl"
 METADATA_DIRNAME = "metadata"
 SESSIONS_DIRNAME = "sessions"
-EXPORT_FORMAT_VERSION = 6
+READER_DIRNAME = "reader"
+EXPORT_FORMAT_VERSION = 7
 
 MARKDOWN_FILTER_RULES = (
     "Routine token_count events are omitted from Markdown.",
@@ -70,6 +72,7 @@ INDEX_OPTIONAL_FIELDS = (
     "source",
     "model_provider",
     "cli_version",
+    "reader_relpath",
 )
 
 METADATA_OPTIONAL_FIELDS = INDEX_OPTIONAL_FIELDS + ("source_file", "markdown_filter_rules")
@@ -80,6 +83,7 @@ STATE_REQUIRED_FIELDS = (
     "session_id",
     "metadata_relpath",
     "markdown_relpath",
+    "reader_relpath",
 )
 
 
@@ -98,6 +102,10 @@ class MirrorLayout:
         return self.out_dir / INDEX_FILENAME
 
     @property
+    def reader_index_path(self) -> Path:
+        return self.out_dir / HTML_INDEX_FILENAME
+
+    @property
     def state_path(self) -> Path:
         return self.out_dir / STATE_FILENAME
 
@@ -109,14 +117,24 @@ class MirrorLayout:
     def sessions_dir(self) -> Path:
         return self.out_dir / SESSIONS_DIRNAME
 
+    @property
+    def reader_dir(self) -> Path:
+        return self.out_dir / READER_DIRNAME
+
     def metadata_relpath(self, session_id: str) -> str:
         return f"{METADATA_DIRNAME}/{session_id}.json"
 
     def markdown_relpath(self, session_id: str) -> str:
         return f"{SESSIONS_DIRNAME}/{session_id}.md"
 
+    def reader_relpath(self, session_id: str) -> str:
+        return f"{READER_DIRNAME}/{session_id}.html"
+
     def metadata_path(self, session_id: str) -> Path:
         return self.out_dir / self.metadata_relpath(session_id)
 
     def markdown_path(self, session_id: str) -> Path:
         return self.out_dir / self.markdown_relpath(session_id)
+
+    def reader_path(self, session_id: str) -> Path:
+        return self.out_dir / self.reader_relpath(session_id)

@@ -13,8 +13,10 @@ This contract covers the derived mirror under an output directory such as `out/`
 Primary files:
 
 - `README.md`
+- `index.html`
 - `sessions-index.jsonl`
 - `metadata/<session-id>.json`
+- `reader/<session-id>.html`
 - `sessions/<session-id>.md`
 - `.codex-session-mirror-state.jsonl`
 
@@ -27,9 +29,12 @@ Required layout:
 ```text
 <out-dir>/
 ├── README.md
+├── index.html
 ├── sessions-index.jsonl
 ├── metadata/
 │   └── <session-id>.json
+├── reader/
+│   └── <session-id>.html
 ├── sessions/
 │   └── <session-id>.md
 └── .codex-session-mirror-state.jsonl
@@ -38,8 +43,10 @@ Required layout:
 Invariants:
 
 - `README.md` is a generated landing page for the derived mirror.
+- `index.html` is a generated browser reader landing page for the same derived mirror.
 - `sessions-index.jsonl` is newline-delimited JSON, one object per exported session.
 - `metadata/<session-id>.json` is the per-session structured export.
+- `reader/<session-id>.html` is the per-session static HTML reader page.
 - `sessions/<session-id>.md` is the readable transcript export for the same session id.
 - `.codex-session-mirror-state.jsonl` is local mirror bookkeeping, not part of Codex source state.
 
@@ -102,6 +109,7 @@ These fields are useful and should be preserved when available, but may be `null
 - `source`
 - `model_provider`
 - `cli_version`
+- `reader_relpath`
 
 ### Stable Count Fields
 
@@ -151,6 +159,7 @@ These fields should remain compatible when available:
 - `model_provider`
 - `cli_version`
 - `source_file`
+- `reader_relpath`
 
 ### Markdown Filter Notes
 
@@ -245,6 +254,19 @@ The exact prose may evolve, but the conceptual sections should remain compatible
 - profile flags affect derived Markdown sections only
 - raw source files remain untouched
 
+## reader/<session-id>.html
+
+Role:
+
+- browser-friendly static reader page for one exported session
+
+Expected behavior:
+
+- generated from the same derived mirror output as the Markdown and metadata
+- safe to move together with the mirror
+- links back to `../index.html`, `../README.md`, `../sessions/<session-id>.md`, and `../metadata/<session-id>.json`
+- may present the transcript as escaped preformatted text instead of fully rendered Markdown
+
 ## README.md in the Mirror Root
 
 Role:
@@ -257,6 +279,18 @@ Expected behavior:
 - relative links to transcript and metadata files
 - mirror-level summary
 - start-here guidance for the newest session
+
+## index.html in the Mirror Root
+
+Role:
+
+- self-contained browser landing page for copied or synced mirrors
+
+Expected behavior:
+
+- generated from the derived index, not from raw `~/.codex`
+- links to `reader/<session-id>.html`, `sessions/<session-id>.md`, and `metadata/<session-id>.json`
+- includes mirror-level summary and lightweight client-side filtering
 
 ## .codex-session-mirror-state.jsonl
 

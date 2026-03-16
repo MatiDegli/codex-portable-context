@@ -3,6 +3,7 @@
 from . import (
     contract,
     discovery,
+    html_reader,
     index,
     listing,
     markdown,
@@ -18,6 +19,7 @@ from . import (
 __all__ = [
     "contract",
     "discovery",
+    "html_reader",
     "index",
     "listing",
     "markdown",

@@ -26,7 +26,9 @@ def test_export_mirror_writes_contract_files_and_reuses_state(tmp_path: Path) ->
     session_id = "session-1234"
     metadata_path = out_dir / "metadata" / f"{session_id}.json"
     markdown_path = out_dir / "sessions" / f"{session_id}.md"
+    reader_path = out_dir / "reader" / f"{session_id}.html"
     landing_path = out_dir / "README.md"
+    reader_index_path = out_dir / "index.html"
     index_path = out_dir / "sessions-index.jsonl"
     state_path = out_dir / ".codex-session-mirror-state.jsonl"
 
@@ -44,14 +46,25 @@ def test_export_mirror_writes_contract_files_and_reuses_state(tmp_path: Path) ->
     assert metadata["session_id"] == session_id
     assert metadata["source_file"] == str(session_path.resolve())
     assert metadata["markdown_relpath"] == f"sessions/{session_id}.md"
+    assert metadata["reader_relpath"] == f"reader/{session_id}.html"
     assert metadata["summary"]["preview"].startswith("Please mirror")
     assert metadata["redaction_report"]["enabled"] is False
     assert markdown_path.is_file()
+    assert reader_path.is_file()
     assert landing_path.is_file()
+    assert reader_index_path.is_file()
     assert state_path.is_file()
     assert index_entries[0]["session_id"] == session_id
+    assert index_entries[0]["reader_relpath"] == f"reader/{session_id}.html"
     landing_text = landing_path.read_text(encoding="utf-8")
+    reader_index_text = reader_index_path.read_text(encoding="utf-8")
+    reader_text = reader_path.read_text(encoding="utf-8")
     assert f"[sessions/{session_id}.md](sessions/{session_id}.md)" in landing_text
+    assert "[index.html](index.html)" in landing_text
+    assert f'href="reader/{session_id}.html"' in reader_index_text
+    assert "../index.html" in reader_text
+    assert "Raw transcript Markdown" in reader_text
+    assert "Please mirror /home/tester/project" in reader_text
 
 
 def test_export_mirror_redacts_derived_output(tmp_path: Path) -> None:
@@ -69,6 +82,7 @@ def test_export_mirror_redacts_derived_output(tmp_path: Path) -> None:
 
     metadata_text = (out_dir / "metadata" / "session-1234.json").read_text(encoding="utf-8")
     markdown_text = (out_dir / "sessions" / "session-1234.md").read_text(encoding="utf-8")
+    reader_text = (out_dir / "reader" / "session-1234.html").read_text(encoding="utf-8")
     metadata = json.loads(metadata_text)
 
     assert result.redacted is True
@@ -76,6 +90,8 @@ def test_export_mirror_redacts_derived_output(tmp_path: Path) -> None:
     assert "<redacted-secret>" in metadata_text
     assert "C:\\Users\\tester\\project" not in metadata_text
     assert "<redacted-secret>" in markdown_text
+    assert "&lt;redacted-home&gt;" in reader_text
+    assert "&lt;redacted-secret&gt;" in reader_text
     assert metadata["redaction_report"]["enabled"] is True
     assert metadata["redaction_report"]["total_replacements"] > 0
 

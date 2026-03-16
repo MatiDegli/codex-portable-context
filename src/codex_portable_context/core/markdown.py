@@ -128,6 +128,7 @@ def render_landing(
         ),
         f"- Redacted export: `{'yes' if redacted_export else 'no'}`",
         "- Session index: [sessions-index.jsonl](sessions-index.jsonl)",
+        "- Browser reader: [index.html](index.html)",
         "",
     ]
 

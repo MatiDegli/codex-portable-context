@@ -10,6 +10,7 @@ from typing import Any
 
 from .contract import LANDING_MARKER, MARKDOWN_FILTER_RULES
 from .discovery import iter_session_files, mirror_layout
+from .html_reader import render_reader_index, render_session_reader
 from .index import sort_entries
 from .markdown import render_landing, render_session_markdown
 from .parsing import ParsedSession, load_source_session_index, parse_session_file
@@ -99,6 +100,7 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
             and previous.input_signature == signature
             and metadata_path.is_file()
             and markdown_path.is_file()
+            and layout.reader_path(parsed.session_id).is_file()
         ):
             index_entries.append(_load_json(metadata_path))
             next_state.append(
@@ -108,6 +110,7 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
                     session_id=parsed.session_id,
                     metadata_relpath=metadata_relpath,
                     markdown_relpath=markdown_relpath,
+                    reader_relpath=layout.reader_relpath(parsed.session_id),
                 )
             )
             reused_count += 1
@@ -129,6 +132,7 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
                 session_id=parsed.session_id,
                 metadata_relpath=metadata_relpath,
                 markdown_relpath=markdown_relpath,
+                reader_relpath=layout.reader_relpath(parsed.session_id),
             )
         )
         rendered_count += 1
@@ -138,11 +142,18 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
             continue
         metadata_removed = _remove_if_present(layout.out_dir / previous.metadata_relpath)
         markdown_removed = _remove_if_present(layout.out_dir / previous.markdown_relpath)
-        if metadata_removed or markdown_removed:
+        reader_removed = _remove_if_present(layout.out_dir / previous.reader_relpath)
+        if metadata_removed or markdown_removed or reader_removed:
             removed_count += 1
 
     ordered_entries = sort_entries(index_entries)
     _write_index(layout.index_path, ordered_entries)
+    _write_reader_index(
+        path=layout.reader_index_path,
+        entries=ordered_entries,
+        exported_at=_iso_now(),
+        redacted_export=config.redact,
+    )
     landing = render_landing(
         entries=ordered_entries,
         exported_at=_iso_now(),
@@ -165,6 +176,7 @@ def _prepare_layout(layout: Any) -> None:
     layout.out_dir.mkdir(parents=True, exist_ok=True)
     layout.metadata_dir.mkdir(parents=True, exist_ok=True)
     layout.sessions_dir.mkdir(parents=True, exist_ok=True)
+    layout.reader_dir.mkdir(parents=True, exist_ok=True)
 
 
 def _render_session_export(
@@ -189,6 +201,7 @@ def _render_session_export(
         "source_relpath": parsed.source_relpath,
         "metadata_relpath": layout.metadata_relpath(parsed.session_id),
         "markdown_relpath": layout.markdown_relpath(parsed.session_id),
+        "reader_relpath": layout.reader_relpath(parsed.session_id),
         "session_timestamp": parsed.session_timestamp,
         "cwd": parsed.cwd,
         "originator": parsed.originator,
@@ -251,9 +264,19 @@ def _render_session_export(
 
     metadata_path = layout.metadata_path(parsed.session_id)
     markdown_path = layout.markdown_path(parsed.session_id)
+    reader_path = layout.reader_path(parsed.session_id)
     metadata_path.write_text(final_metadata, encoding="utf-8")
     markdown_path.write_text(final_markdown, encoding="utf-8")
-    return _load_json(metadata_path)
+    written_metadata = _load_json(metadata_path)
+    reader_path.write_text(
+        render_session_reader(
+            entry=written_metadata,
+            metadata_text=final_metadata,
+            markdown_text=final_markdown,
+        ),
+        encoding="utf-8",
+    )
+    return written_metadata
 
 
 def _write_index(path: Path, entries: list[dict[str, Any]]) -> None:
@@ -264,6 +287,23 @@ def _write_index(path: Path, entries: list[dict[str, Any]]) -> None:
         )
         text += "\n"
     path.write_text(text, encoding="utf-8")
+
+
+def _write_reader_index(
+    *,
+    path: Path,
+    entries: list[dict[str, Any]],
+    exported_at: str,
+    redacted_export: bool,
+) -> None:
+    path.write_text(
+        render_reader_index(
+            entries=entries,
+            exported_at=exported_at,
+            redacted_export=redacted_export,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _write_landing(path: Path, text: str) -> None:

@@ -45,6 +45,7 @@ Direct module invocation is also supported:
 ```
 
 If you are browsing a copied or synced mirror directly, start with `out/README.md`.
+If you want a browser-friendly view, open `out/index.html`.
 
 ## Mirror Output
 
@@ -54,14 +55,19 @@ By default the exporter writes:
 out/
 ├── .codex-session-mirror-state.jsonl
 ├── README.md
+├── index.html
 ├── sessions-index.jsonl
 ├── metadata/
 │   └── <session-id>.json
+├── reader/
+│   └── <session-id>.html
 └── sessions/
     └── <session-id>.md
 ```
 
 Use `out/README.md` as the main entry point when browsing the mirror on another device. It is generated from the derived index, includes a small "Start Here" section for the newest session, links to each transcript and metadata file, and stays self-contained after copy or sync.
+
+Use `out/index.html` when you want a static browser UI. It is generated from the same derived mirror, adds client-side filtering, and links to a per-session reader page plus the raw Markdown and JSON exports.
 
 Repeated runs reuse unchanged derived artifacts when possible. The hidden state file is local bookkeeping for the mirror output only.
 
@@ -120,6 +126,12 @@ Default export:
 
 ```bash
 .venv/bin/codex-session-mirror
+```
+
+Open the browser reader:
+
+```bash
+python -m webbrowser out/index.html
 ```
 
 Redacted export:
@@ -355,6 +367,8 @@ They currently rely on these fields:
 - `redaction_report`
 
 The generated landing page also uses the exported summary fields to show a short preview, activity line, and environment line for each session.
+
+The generated browser reader uses the same summary fields and the optional `reader_relpath` field to build a self-contained static UI.
 
 For older mirror outputs, path resolution can fall back to:
 
