@@ -181,6 +181,7 @@ Primary Python entrypoints:
 The familiar Bash command names under `scripts/` are now thin compatibility wrappers that delegate to those Python CLIs. They are retained for transition safety, but they are no longer the main implementation.
 
 Phase 7 parity status remains tracked in [docs/phase7-parity.md](docs/phase7-parity.md).
+The last full Bash baseline is preserved in git as the `bash-v1-baseline` tag.
 
 ## Python v2 Baseline
 
@@ -224,6 +225,7 @@ That means:
 - existing shell-oriented usage still works through the familiar command names
 - direct Python invocation is supported and recommended for v2 workflows
 - Bash remains in the repo for a short compatibility window, but it is no longer the architectural center
+- the last full Bash implementation remains available historically via the `bash-v1-baseline` tag
 
 ## Export Quality
 

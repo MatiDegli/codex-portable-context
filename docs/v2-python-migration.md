@@ -268,6 +268,7 @@ Current status:
 - Python is now the primary implementation path for v2
 - the Bash command names in `scripts/` are now thin compatibility wrappers
 - Bash is retained for a short compatibility window and has not been deleted yet
+- the last full Bash implementation is preserved as the `bash-v1-baseline` git tag
 
 ## Bash Wrapper Recommendation
 

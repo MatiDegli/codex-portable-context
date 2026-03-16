@@ -36,6 +36,7 @@ This parity review was strong enough to support the Phase 8 transition:
 - Python is now the primary implementation path
 - Bash can move to thin compatibility wrappers
 - the Bash code no longer needs to remain a second full implementation core
+- the last full Bash implementation can stay available historically through the `bash-v1-baseline` git tag
 
 ## Remaining Pre-Wrapper Limitations
 

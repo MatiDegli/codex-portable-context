@@ -60,3 +60,16 @@ Decision:
 Why:
 
 - improve quality, consistency, and safety before porting the exporter in Phase 3
+
+## 2026-03-16 - Python promoted to primary path, Bash reduced to wrappers
+
+Decision:
+
+- make Python the primary implementation path for v2
+- convert the Bash command entrypoints into thin compatibility wrappers
+- preserve the last full Bash implementation historically in git
+
+Why:
+
+- parity and cross-OS hardening were strong enough to stop carrying two active implementation cores
+- a single Python core is more scalable and maintainable than indefinite Bash/Python duplication
