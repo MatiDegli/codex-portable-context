@@ -29,7 +29,7 @@ def open_file(path: Path) -> None:
         return
 
     if sys.platform.startswith("win") and hasattr(os, "startfile"):
-        os.startfile(path)  # type: ignore[attr-defined]
+        os.startfile(str(path))  # type: ignore[attr-defined]
         return
 
     if sys.platform == "darwin":

@@ -74,6 +74,7 @@ def test_export_mirror_redacts_derived_output(tmp_path: Path) -> None:
     assert result.redacted is True
     assert "<redacted-home>" in metadata_text
     assert "<redacted-secret>" in metadata_text
+    assert "C:\\Users\\tester\\project" not in metadata_text
     assert "<redacted-secret>" in markdown_text
     assert metadata["redaction_report"]["enabled"] is True
     assert metadata["redaction_report"]["total_replacements"] > 0
@@ -83,7 +84,7 @@ def write_fixture_session(tmp_path: Path) -> tuple[Path, Path]:
     codex_home = tmp_path / ".codex"
     source_dir = codex_home / "sessions" / "2026" / "03" / "16"
     source_dir.mkdir(parents=True)
-    session_path = source_dir / "fixture-session.jsonl"
+    session_path = source_dir / "rollout-2026-03-16T10-00-00-fixture-session.jsonl"
 
     records = [
         {
@@ -114,8 +115,8 @@ def write_fixture_session(tmp_path: Path) -> tuple[Path, Path]:
             "payload": {
                 "type": "user_message",
                 "message": (
-                    "Please mirror /home/tester/project and hide "
-                    "sk-1234567890abcdefghijklmnop."
+                    "Please mirror /home/tester/project and C:\\Users\\tester\\project "
+                    "and hide sk-1234567890abcdefghijklmnop."
                 ),
             },
         },

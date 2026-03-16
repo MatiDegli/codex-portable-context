@@ -61,14 +61,14 @@ def build_fixture_mirror(
     source_dir = codex_home / "sessions" / "2026" / "03" / "16"
     source_dir.mkdir(parents=True)
     write_session(
-        source_dir / "fixture-session-a.jsonl",
+        source_dir / "rollout-2026-03-16T10-00-00-fixture-session-a.jsonl",
         session_id="session-1234",
         updated_at="2026-03-16T10:00:06Z",
         thread_name="Fixture Session",
     )
     if extra_session:
         write_session(
-            source_dir / "fixture-session-b.jsonl",
+            source_dir / "rollout-2026-03-16T10-05-00-fixture-session-b.jsonl",
             session_id="session-5678",
             updated_at="2026-03-16T10:05:06Z",
             thread_name="Second Fixture Session",

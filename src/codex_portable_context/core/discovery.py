@@ -57,7 +57,11 @@ def mirror_layout(out_dir: Path | None = None) -> MirrorLayout:
 def iter_session_files(source_dir: Path) -> Iterator[Path]:
     """Yield session JSONL files in deterministic order."""
 
-    yield from sorted(path for path in source_dir.rglob("*.jsonl") if path.is_file())
+    yield from sorted(
+        path
+        for path in source_dir.rglob("rollout-*.jsonl")
+        if path.is_file()
+    )
 
 
 def source_relpath(file_path: Path, source_dir: Path) -> str:

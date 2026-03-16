@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import textwrap
 from dataclasses import dataclass
 
 from .index import MirrorEntry, entry_relpath, entry_session_id, entry_title, sort_entries
@@ -28,8 +29,9 @@ def filter_entries(entries: list[MirrorEntry], options: ListOptions) -> list[Mir
     id_filter = options.id_filter.lower()
     filtered: list[MirrorEntry] = []
 
-    for entry in sort_entries(entries):
-        title = entry_title(entry).lower()
+    for raw_entry in sort_entries(entries):
+        entry = enrich_entry(raw_entry)
+        title = str(entry["display_title"]).lower()
         session_id = entry_session_id(entry).lower()
         if title_filter and title_filter not in title:
             continue
@@ -45,7 +47,13 @@ def filter_entries(entries: list[MirrorEntry], options: ListOptions) -> list[Mir
 def entries_to_json(entries: list[MirrorEntry]) -> str:
     """Serialize filtered entries as pretty JSON."""
 
-    return json.dumps(entries, indent=2, ensure_ascii=False) + "\n"
+    payload = []
+    for entry in entries:
+        item = dict(entry)
+        item.pop("sort_timestamp", None)
+        item.pop("display_title", None)
+        payload.append(item)
+    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 
 def render_entry_table(entries: list[MirrorEntry], options: ListOptions) -> str:
@@ -59,17 +67,17 @@ def render_entry_table(entries: list[MirrorEntry], options: ListOptions) -> str:
         lines.append(
             f"{entry_session_id(entry):<36}  "
             f"{pretty_timestamp(_sort_timestamp(entry)):<19}  "
-            f"{truncate(entry_title(entry), 44):<44}  "
+            f"{truncate(str(entry.get('display_title') or entry_title(entry)), 44):<44}  "
             f"{entry_relpath(entry, 'markdown')}"
         )
         if options.show_summary:
-            preview = _summary_value(entry, "preview") or _summary_value(entry, "one_line")
+            preview = str(entry.get("summary_line") or "")
             if preview:
                 lines.append(render_labeled_line("preview", preview))
         if options.show_details:
-            activity = _summary_value(entry, "activity")
-            detail_line = _summary_value(entry, "detail_line")
-            environment = _summary_value(entry, "environment")
+            activity = str(entry.get("activity_line") or "")
+            detail_line = str(entry.get("detail_line") or "")
+            environment = str(entry.get("environment_line") or "")
             if activity:
                 lines.append(render_labeled_line("activity", activity))
             elif detail_line:
@@ -77,7 +85,8 @@ def render_entry_table(entries: list[MirrorEntry], options: ListOptions) -> str:
             if environment:
                 lines.append(render_labeled_line("environment", environment))
         if options.show_redaction:
-            lines.append(render_labeled_line("redaction", redaction_line(entry)))
+            redaction_value = str(entry.get("redaction_line") or "off")
+            lines.append(render_labeled_line("redaction", redaction_value))
 
     return "\n".join(lines) + "\n"
 
@@ -90,10 +99,17 @@ def truncate(text: str, limit: int) -> str:
     return text[: max(0, limit - 3)].rstrip() + "..."
 
 
-def render_labeled_line(label: str, value: str) -> str:
+def render_labeled_line(label: str, value: str, *, width: int = 110) -> str:
     """Render a compact labeled detail line."""
 
-    return f"  {label:<11} {value}"
+    prefix = f"  {label:<11} "
+    available_width = max(20, width - len(prefix))
+    wrapped = textwrap.wrap(value, width=available_width) or [""]
+    lines = [f"{prefix}{wrapped[0]}"]
+    indent = " " * len(prefix)
+    for extra_line in wrapped[1:]:
+        lines.append(f"{indent}{extra_line}")
+    return "\n".join(lines)
 
 
 def redaction_line(entry: MirrorEntry) -> str:
@@ -114,6 +130,23 @@ def redaction_line(entry: MirrorEntry) -> str:
         f"host: {int(placeholder_dict.get('host', 0))}, "
         f"secret: {int(placeholder_dict.get('secret', 0))}"
     )
+
+
+def enrich_entry(entry: MirrorEntry) -> MirrorEntry:
+    """Add the derived presentation fields that the Bash baseline exposes."""
+
+    summary_line = _summary_value(entry, "preview") or _summary_value(entry, "one_line")
+    return {
+        **entry,
+        "sort_timestamp": _sort_timestamp(entry),
+        "display_title": entry_title(entry),
+        "markdown_relpath": entry_relpath(entry, "markdown"),
+        "summary_line": summary_line,
+        "detail_line": _summary_value(entry, "detail_line"),
+        "activity_line": _summary_value(entry, "activity"),
+        "environment_line": _summary_value(entry, "environment"),
+        "redaction_line": redaction_line(entry),
+    }
 
 
 def _summary_value(entry: MirrorEntry, key: str) -> str:

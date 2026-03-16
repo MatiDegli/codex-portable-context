@@ -195,6 +195,8 @@ Phase 6 now also includes an initial Python latest entrypoint:
 ./.venv/bin/python -m codex_portable_context.cli.latest --metadata --print
 ```
 
+Phase 7 is currently focused on parity validation and cross-OS hardening, not on wrapping or retiring the Bash commands yet. The current parity status is tracked in [docs/phase7-parity.md](docs/phase7-parity.md).
+
 ## Python v2 Baseline
 
 The planned Python v2 work uses this runtime policy:

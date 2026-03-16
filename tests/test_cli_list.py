@@ -59,7 +59,7 @@ def build_fixture_mirror(tmp_path: Path, *, redact: bool = False) -> Path:
     codex_home = tmp_path / ".codex"
     source_dir = codex_home / "sessions" / "2026" / "03" / "16"
     source_dir.mkdir(parents=True)
-    session_path = source_dir / "fixture-session.jsonl"
+    session_path = source_dir / "rollout-2026-03-16T10-00-00-fixture-session.jsonl"
 
     records = [
         {

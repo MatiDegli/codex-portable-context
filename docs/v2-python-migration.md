@@ -252,6 +252,12 @@ Current status:
 - either keep Bash scripts as thin compatibility wrappers
 - or deprecate them after the Python CLIs are stable and documented
 
+Current status:
+
+- wrapper conversion is intentionally deferred
+- this phase is being used for parity validation and cross-OS hardening instead
+- see [phase7-parity.md](phase7-parity.md) for the current findings
+
 ## Bash Wrapper Recommendation
 
 Recommended path:
