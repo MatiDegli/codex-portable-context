@@ -62,7 +62,10 @@ def test_export_mirror_writes_contract_files_and_reuses_state(tmp_path: Path) ->
     assert f"[sessions/{session_id}.md](sessions/{session_id}.md)" in landing_text
     assert "[index.html](index.html)" in landing_text
     assert f'href="reader/{session_id}.html"' in reader_index_text
+    assert "Standard export" in reader_index_text
     assert "../index.html" in reader_text
+    assert "Jump to snapshot" in reader_text
+    assert "Jump to raw metadata" in reader_text
     assert "Raw transcript Markdown" in reader_text
     assert "Please mirror /home/tester/project" in reader_text
 
@@ -90,6 +93,7 @@ def test_export_mirror_redacts_derived_output(tmp_path: Path) -> None:
     assert "<redacted-secret>" in metadata_text
     assert "C:\\Users\\tester\\project" not in metadata_text
     assert "<redacted-secret>" in markdown_text
+    assert "Redacted export" in reader_text
     assert "&lt;redacted-home&gt;" in reader_text
     assert "&lt;redacted-secret&gt;" in reader_text
     assert metadata["redaction_report"]["enabled"] is True

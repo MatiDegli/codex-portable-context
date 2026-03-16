@@ -189,6 +189,12 @@ def render_reader_index(
       background: var(--accent-soft);
       color: var(--accent);
     }}
+    .badge-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }}
     .detail {{
       margin: 8px 0 0;
     }}
@@ -238,6 +244,10 @@ def render_reader_index(
           <span class="summary-value">{"yes" if redacted_export else "no"}</span>
         </div>
       </div>
+      <div class="badge-row">
+        <span class="badge">{"Redacted export" if redacted_export else "Standard export"}</span>
+        <span class="badge">Static reader</span>
+      </div>
       <div class="links">
         {latest_link}
         <a href="README.md">Open mirror README</a>
@@ -285,6 +295,8 @@ def render_session_reader(
     title = str(entry.get("title") or f"Session {session_id}")
     summary = entry.get("summary")
     summary_dict = summary if isinstance(summary, dict) else {}
+    export_status = "Redacted export" if entry.get("redacted") else "Standard export"
+    export_profile = _escape_text(str(entry.get("export_profile") or "unknown profile"))
     transcript_rel = "../" + str(entry.get("markdown_relpath") or f"sessions/{session_id}.md")
     metadata_rel = "../" + str(entry.get("metadata_relpath") or f"metadata/{session_id}.json")
 
@@ -408,6 +420,12 @@ def render_session_reader(
       text-decoration: none;
       font-weight: 700;
     }}
+    .subnav {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }}
     .layout {{
       display: grid;
       grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
@@ -452,6 +470,23 @@ def render_session_reader(
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }}
+    .badge {{
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }}
+    .badge-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }}
     pre {{
       margin: 0;
       padding: 18px;
@@ -482,24 +517,35 @@ def render_session_reader(
         to move with the mirror and does not depend on the original Codex
         source logs.
       </p>
+      <div class="badge-row">
+        <span class="badge">{export_status}</span>
+        <span class="badge">{export_profile}</span>
+      </div>
       <div class="links">
         <a class="primary-link" href="../index.html">Back to reader index</a>
         <a href="../README.md">Mirror README</a>
         <a href="{_escape_attr(transcript_rel)}">Raw transcript Markdown</a>
         <a href="{_escape_attr(metadata_rel)}">Metadata JSON</a>
       </div>
+      <nav class="subnav" aria-label="Session sections">
+        <a href="#snapshot">Jump to snapshot</a>
+        <a href="#metadata">Jump to metadata</a>
+        <a href="#transcript">Jump to transcript</a>
+        <a href="#raw-metadata">Jump to raw metadata</a>
+      </nav>
     </section>
     <section class="layout">
-      <aside class="panel">
+      <aside class="panel" id="snapshot">
         <h2>Session Snapshot</h2>
         {"".join(detail_blocks) or '<p class="detail">No summary details available.</p>'}
+        <div id="metadata"></div>
         <h2>Metadata</h2>
         <table>{metadata_rows_html}</table>
       </aside>
-      <section class="panel">
+      <section class="panel" id="transcript">
         <h2>Transcript</h2>
         <pre>{_escape_text(markdown_text)}</pre>
-        <details>
+        <details id="raw-metadata">
           <summary>Show raw metadata JSON</summary>
           <pre>{_escape_text(metadata_text)}</pre>
         </details>

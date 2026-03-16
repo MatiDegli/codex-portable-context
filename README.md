@@ -68,6 +68,7 @@ out/
 Use `out/README.md` as the main entry point when browsing the mirror on another device. It is generated from the derived index, includes a small "Start Here" section for the newest session, links to each transcript and metadata file, and stays self-contained after copy or sync.
 
 Use `out/index.html` when you want a static browser UI. It is generated from the same derived mirror, adds client-side filtering, and links to a per-session reader page plus the raw Markdown and JSON exports.
+Per-session reader pages also include quick jump links for snapshot, metadata, transcript, and raw metadata.
 
 Repeated runs reuse unchanged derived artifacts when possible. The hidden state file is local bookkeeping for the mirror output only.
 
