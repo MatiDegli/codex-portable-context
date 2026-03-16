@@ -8,6 +8,7 @@
 - builds a derived mirror under `out/` or `out-redacted/`
 - keeps the source state in `~/.codex` untouched
 - provides small helper commands for listing and opening exported sessions
+- can generate extractive handoff bundles for starting work on another device without write-back
 
 ## What It Does Not Do
 
@@ -26,6 +27,7 @@ Linux:
 ./scripts/bootstrap-python-v2
 .venv/bin/codex-session-mirror
 .venv/bin/codex-session-list --latest --summary
+.venv/bin/codex-session-handoff --latest
 ```
 
 Windows PowerShell:
@@ -105,6 +107,7 @@ Installed console entrypoints:
 .venv/bin/codex-session-list
 .venv/bin/codex-session-open
 .venv/bin/codex-session-latest
+.venv/bin/codex-session-handoff
 ```
 
 ```powershell
@@ -127,6 +130,12 @@ Default export:
 
 ```bash
 .venv/bin/codex-session-mirror
+```
+
+Generate a handoff bundle for the latest session:
+
+```bash
+.venv/bin/codex-session-handoff --out-dir ./out --latest
 ```
 
 Open the browser reader:
@@ -170,6 +179,8 @@ These commands operate only on the derived mirror, never on raw `~/.codex`.
   Useful flags: `--metadata`, `--reader`, `--print`, `--out-dir`, `--landing`, `--latest`
 - `codex-session-latest`
   Useful flags: `--metadata`, `--reader`, `--print`, `--out-dir`
+- `codex-session-handoff`
+  Useful flags: `--latest`, `--print`, `--out-dir`
 
 Examples:
 
@@ -185,6 +196,8 @@ codex-session-open --metadata 019cef3a --print
 codex-session-latest --print
 codex-session-latest --reader --print
 codex-session-latest --metadata --print
+codex-session-handoff --latest
+codex-session-handoff 019cef3a --print
 ```
 
 Both `codex-session-open --help` and `codex-session-latest --help` now include short built-in examples so the common open/print flows are easier to discover from the terminal.
@@ -374,6 +387,15 @@ The generated landing page also uses the exported summary fields to show a short
 
 The generated browser reader uses the same summary fields and the optional `reader_relpath` field to build a self-contained static UI.
 
+## Handoff Bundles
+
+`codex-session-handoff` generates a small extractive bundle under `out/handoffs/`:
+
+- `<session-id>.md`
+- `<session-id>.json`
+
+The handoff bundle is designed for continuity, not raw session import. It uses the derived mirror as the base and, when the local source session is still available, adds a recent conversation window and recent tool activity without using an API or an LLM.
+
 For older mirror outputs, path resolution can fall back to:
 
 - `metadata/<session-id>.json`
@@ -382,6 +404,7 @@ For older mirror outputs, path resolution can fall back to:
 ## Docs
 
 - [docs/architecture.md](docs/architecture.md)
+- [docs/handoff.md](docs/handoff.md)
 - [docs/mirror-contract.md](docs/mirror-contract.md)
 - [docs/phase7-parity.md](docs/phase7-parity.md)
 - [docs/python-v2-conventions.md](docs/python-v2-conventions.md)

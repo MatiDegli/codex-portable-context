@@ -10,6 +10,7 @@ LANDING_MARKER = "<!-- codex-portable-context: derived-mirror -->"
 HTML_INDEX_FILENAME = "index.html"
 INDEX_FILENAME = "sessions-index.jsonl"
 STATE_FILENAME = ".codex-session-mirror-state.jsonl"
+HANDOFFS_DIRNAME = "handoffs"
 METADATA_DIRNAME = "metadata"
 SESSIONS_DIRNAME = "sessions"
 READER_DIRNAME = "reader"
@@ -114,6 +115,10 @@ class MirrorLayout:
         return self.out_dir / METADATA_DIRNAME
 
     @property
+    def handoffs_dir(self) -> Path:
+        return self.out_dir / HANDOFFS_DIRNAME
+
+    @property
     def sessions_dir(self) -> Path:
         return self.out_dir / SESSIONS_DIRNAME
 
@@ -130,6 +135,12 @@ class MirrorLayout:
     def reader_relpath(self, session_id: str) -> str:
         return f"{READER_DIRNAME}/{session_id}.html"
 
+    def handoff_markdown_relpath(self, session_id: str) -> str:
+        return f"{HANDOFFS_DIRNAME}/{session_id}.md"
+
+    def handoff_json_relpath(self, session_id: str) -> str:
+        return f"{HANDOFFS_DIRNAME}/{session_id}.json"
+
     def metadata_path(self, session_id: str) -> Path:
         return self.out_dir / self.metadata_relpath(session_id)
 
@@ -138,3 +149,9 @@ class MirrorLayout:
 
     def reader_path(self, session_id: str) -> Path:
         return self.out_dir / self.reader_relpath(session_id)
+
+    def handoff_markdown_path(self, session_id: str) -> Path:
+        return self.out_dir / self.handoff_markdown_relpath(session_id)
+
+    def handoff_json_path(self, session_id: str) -> Path:
+        return self.out_dir / self.handoff_json_relpath(session_id)
