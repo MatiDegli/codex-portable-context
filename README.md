@@ -166,9 +166,9 @@ These commands operate only on the derived mirror, never on raw `~/.codex`.
 - `codex-session-list`
   Useful flags: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--details`, `--redaction`, `--json`
 - `codex-session-open <session-id-or-prefix>`
-  Useful flags: `--metadata`, `--print`, `--out-dir`, `--landing`, `--latest`
+  Useful flags: `--metadata`, `--reader`, `--print`, `--out-dir`, `--landing`, `--latest`
 - `codex-session-latest`
-  Useful flags: `--metadata`, `--print`, `--out-dir`
+  Useful flags: `--metadata`, `--reader`, `--print`, `--out-dir`
 
 Examples:
 
@@ -178,8 +178,11 @@ codex-session-list --latest --summary --details
 codex-session-list --title galaxy --limit 5
 codex-session-list --out-dir ./out-redacted --latest --redaction
 codex-session-open 019cef3a --print
+codex-session-open --landing --reader --print
+codex-session-open 019cef3a --reader --print
 codex-session-open --metadata 019cef3a --print
 codex-session-latest --print
+codex-session-latest --reader --print
 codex-session-latest --metadata --print
 ```
 

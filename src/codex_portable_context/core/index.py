@@ -41,6 +41,19 @@ def require_landing_path(out_dir: Path | None = None) -> Path:
     return landing_path
 
 
+def require_reader_index_path(out_dir: Path | None = None) -> Path:
+    """Return the reader landing path or raise if it is missing."""
+
+    layout = mirror_layout(out_dir)
+    reader_index_path = layout.reader_index_path
+    if not reader_index_path.is_file():
+        raise FileNotFoundError(
+            f"Mirror reader index not found: {reader_index_path}\n"
+            "Run codex-session-mirror first, or pass --out-dir."
+        )
+    return reader_index_path
+
+
 def load_jsonl(path: Path) -> list[MirrorEntry]:
     """Load newline-delimited JSON objects from a file."""
 
@@ -118,6 +131,8 @@ def entry_relpath(entry: MirrorEntry, kind: str, layout: MirrorLayout | None = N
         return str(entry.get("markdown_relpath") or active_layout.markdown_relpath(session_id))
     if kind == "metadata":
         return str(entry.get("metadata_relpath") or active_layout.metadata_relpath(session_id))
+    if kind == "reader":
+        return str(entry.get("reader_relpath") or active_layout.reader_relpath(session_id))
     raise ValueError(f"Unknown mirror entry kind: {kind}")
 
 

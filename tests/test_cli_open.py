@@ -19,6 +19,20 @@ def test_open_cli_prints_landing_and_metadata_paths(tmp_path: Path, capsys) -> N
     assert metadata_output.out.strip() == str(out_dir / "metadata" / "session-1234.json")
 
 
+def test_open_cli_prints_reader_paths(tmp_path: Path, capsys) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+
+    landing_code = main(["--out-dir", str(out_dir), "--landing", "--reader", "--print"])
+    landing_output = capsys.readouterr()
+    reader_code = main(["--out-dir", str(out_dir), "session-1234", "--reader", "--print"])
+    reader_output = capsys.readouterr()
+
+    assert landing_code == 0
+    assert reader_code == 0
+    assert landing_output.out.strip() == str(out_dir / "index.html")
+    assert reader_output.out.strip() == str(out_dir / "reader" / "session-1234.html")
+
+
 def test_open_cli_latest_prints_transcript_path(tmp_path: Path, capsys) -> None:
     out_dir = build_fixture_mirror(tmp_path)
 
@@ -50,6 +64,17 @@ def test_open_cli_rejects_invalid_flag_combo(tmp_path: Path, capsys) -> None:
     assert exit_code == 1
     assert captured.out == ""
     assert "--metadata cannot be combined with --landing." in captured.err
+
+
+def test_open_cli_rejects_reader_and_metadata_combo(tmp_path: Path, capsys) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+
+    exit_code = main(["--out-dir", str(out_dir), "session-1234", "--reader", "--metadata"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "Use only one of --metadata or --reader." in captured.err
 
 
 def build_fixture_mirror(

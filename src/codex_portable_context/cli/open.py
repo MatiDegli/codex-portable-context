@@ -13,6 +13,7 @@ from codex_portable_context.core.index import (
     latest_entry,
     load_index,
     require_landing_path,
+    require_reader_index_path,
 )
 from codex_portable_context.core.opening import open_file
 from codex_portable_context.core.resolve import resolve_unique_entry
@@ -28,6 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
             "Examples:\n"
             "  codex-session-open --latest\n"
             "  codex-session-open --landing --print\n"
+            "  codex-session-open --landing --reader --print\n"
+            "  codex-session-open --latest --reader\n"
             "  codex-session-open 019cef3a --metadata --print\n"
             "  python -m codex_portable_context.cli.open --latest --print"
         ),
@@ -38,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--metadata",
         action="store_true",
         help="Target the metadata export instead of the Markdown transcript.",
+    )
+    parser.add_argument(
+        "--reader",
+        action="store_true",
+        help="Target the generated HTML reader instead of the Markdown transcript.",
     )
     parser.add_argument(
         "--print",
@@ -69,17 +77,24 @@ def main(argv: list[str] | None = None) -> int:
         open_latest=args.latest,
         selector=args.selector,
         metadata=args.metadata,
+        reader=args.reader,
     )
     if error:
         sys.stderr.write(error + "\n")
         return 1
 
     if args.landing:
-        target_path = require_landing_path(out_dir)
+        if args.reader:
+            target_path = require_reader_index_path(out_dir)
+        else:
+            target_path = require_landing_path(out_dir)
         if args.print:
             sys.stdout.write(f"{target_path}\n")
             return 0
-        sys.stderr.write(f"Opening mirror landing: {target_path}\n")
+        if args.reader:
+            sys.stderr.write(f"Opening mirror reader index: {target_path}\n")
+        else:
+            sys.stderr.write(f"Opening mirror landing: {target_path}\n")
         open_file(target_path)
         return 0
 
@@ -97,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
             sys.stderr.write(f"{exc}\n")
             return 1
 
-    target_kind = "metadata" if args.metadata else "markdown"
+    target_kind = "reader" if args.reader else "metadata" if args.metadata else "markdown"
     target_path = entry_path(entry, target_kind, out_dir)
     if not target_path.is_file():
         sys.stderr.write(f"Derived file not found: {target_path}\n")
@@ -122,6 +137,7 @@ def validate_args(
     open_latest: bool,
     selector: str | None,
     metadata: bool,
+    reader: bool,
 ) -> str | None:
     """Validate the CLI argument combinations."""
 
@@ -129,6 +145,8 @@ def validate_args(
         return "Use only one of --landing or --latest."
     if open_landing and metadata:
         return "--metadata cannot be combined with --landing."
+    if metadata and reader:
+        return "Use only one of --metadata or --reader."
     if not open_landing and not open_latest and not selector:
         return "Choose one of: --landing, --latest, or a session id/prefix."
     if (open_landing or open_latest) and selector:

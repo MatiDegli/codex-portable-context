@@ -18,6 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  codex-session-latest\n"
             "  codex-session-latest --print\n"
             "  codex-session-latest --metadata --print\n"
+            "  codex-session-latest --reader --print\n"
             "  python -m codex_portable_context.cli.latest --out-dir ./out-redacted --print"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -27,6 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--metadata",
         action="store_true",
         help="Target the metadata export instead of the Markdown transcript.",
+    )
+    parser.add_argument(
+        "--reader",
+        action="store_true",
+        help="Target the generated HTML reader instead of the Markdown transcript.",
     )
     parser.add_argument(
         "--print",
@@ -46,6 +52,8 @@ def main(argv: list[str] | None = None) -> int:
         delegated_args.extend(["--out-dir", args.out_dir])
     if args.metadata:
         delegated_args.append("--metadata")
+    if args.reader:
+        delegated_args.append("--reader")
     if args.print:
         delegated_args.append("--print")
     return open_main(delegated_args)
