@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Run the canonical Python v2 validation commands from the repo root.
+
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+readonly VENV_PYTHON="${REPO_ROOT}/.venv/bin/python"
+
+if [[ ! -x "${VENV_PYTHON}" ]]; then
+  printf 'Missing Python v2 environment: %s\n' "${VENV_PYTHON}" >&2
+  printf 'Run ./scripts/bootstrap-python-v2 first.\n' >&2
+  exit 1
+fi
+
+cd -- "${REPO_ROOT}"
+
+"${VENV_PYTHON}" -m ruff check src tests
+"${VENV_PYTHON}" -m mypy src
+"${VENV_PYTHON}" -m pytest

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Create the local Python v2 environment and install development dependencies.
+
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+
+find_python() {
+  if [[ -n "${PYTHON_BIN:-}" ]]; then
+    printf '%s\n' "${PYTHON_BIN}"
+    return 0
+  fi
+
+  if command -v python3.13 >/dev/null 2>&1; then
+    printf 'python3.13\n'
+    return 0
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    printf 'python3\n'
+    return 0
+  fi
+
+  printf 'No usable Python interpreter found. Install Python 3 first.\n' >&2
+  exit 1
+}
+
+readonly PYTHON_BIN_RESOLVED="$(find_python)"
+readonly VENV_DIR="${REPO_ROOT}/.venv"
+
+cd -- "${REPO_ROOT}"
+
+"${PYTHON_BIN_RESOLVED}" -m venv "${VENV_DIR}"
+"${VENV_DIR}/bin/python" -m pip install --upgrade pip
+"${VENV_DIR}/bin/python" -m pip install -e ".[dev]"
+
+printf 'Python v2 environment ready at %s\n' "${VENV_DIR}"
+printf 'Using interpreter: %s\n' "${PYTHON_BIN_RESOLVED}"

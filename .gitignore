@@ -8,4 +8,5 @@ out-redacted/
 dist/
 __pycache__/
 *.pyc
+*.egg-info/
 .venv/

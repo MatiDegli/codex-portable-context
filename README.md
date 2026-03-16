@@ -145,6 +145,26 @@ This is intended as an implementation shift, not a product-thesis shift. The der
 
 Initial Python Phase 2 work now lives under `src/codex_portable_context/`, with shared core modules for contract constants, source discovery, index loading, session resolution, and cross-platform file opening.
 
+## Python v2 Bootstrap
+
+Canonical bootstrap path:
+
+```bash
+./scripts/bootstrap-python-v2
+```
+
+Canonical validation path:
+
+```bash
+./scripts/validate-python-v2
+```
+
+The Python v2 baseline currently uses:
+
+- `pytest` for tests
+- `ruff` for linting
+- `mypy` for static typing
+
 ## Python v2 Baseline
 
 The planned Python v2 work uses this runtime policy:
