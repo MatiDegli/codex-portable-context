@@ -220,6 +220,12 @@ Current status:
 - move helper logic onto the shared Python index/summary layer
 - preserve current CLI semantics where reasonable
 
+Current status:
+
+- an initial Python list CLI now exists at `python -m codex_portable_context.cli.list`
+- it reads only the derived mirror index
+- it supports the current reading-oriented flags: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--details`, `--redaction`, and `--json`
+
 ### Phase 5: Port `codex-session-open`
 
 - move session resolution and opener behavior into shared Python logic

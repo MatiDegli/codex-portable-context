@@ -173,6 +173,13 @@ Phase 3 now also includes an initial Python exporter entrypoint:
 
 The Bash exporter in `scripts/codex-session-mirror` remains the frozen v1 reference. The Python entrypoint is the active Phase 3 migration path for the mirror command.
 
+Phase 4 now also includes an initial Python list entrypoint:
+
+```bash
+./.venv/bin/python -m codex_portable_context.cli.list
+./.venv/bin/python -m codex_portable_context.cli.list --latest --summary --details
+```
+
 ## Python v2 Baseline
 
 The planned Python v2 work uses this runtime policy:
