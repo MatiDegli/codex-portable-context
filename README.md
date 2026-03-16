@@ -147,6 +147,16 @@ Linux-to-Linux handoff workflow:
 rsync -a ./out/ user@other-linux-box:~/codex-portable-context/inbox/out/
 ```
 
+Expected Linux-to-Windows handoff workflow:
+
+```bash
+.venv/bin/codex-session-mirror --out-dir ./out
+.venv/bin/codex-session-handoff --out-dir ./out --latest
+rsync -a ./out/ /run/media/$USER/TRANSFER/codex-portable-context/out/
+```
+
+Then open `index.html` or the generated handoff bundle on the Windows machine. See [docs/linux-to-windows-handoff.md](docs/linux-to-windows-handoff.md).
+
 Open the browser reader:
 
 ```bash
@@ -417,6 +427,7 @@ For older mirror outputs, path resolution can fall back to:
 - [docs/architecture.md](docs/architecture.md)
 - [docs/handoff.md](docs/handoff.md)
 - [docs/linux-to-linux-handoff.md](docs/linux-to-linux-handoff.md)
+- [docs/linux-to-windows-handoff.md](docs/linux-to-windows-handoff.md)
 - [docs/mirror-contract.md](docs/mirror-contract.md)
 - [docs/phase7-parity.md](docs/phase7-parity.md)
 - [docs/python-v2-conventions.md](docs/python-v2-conventions.md)
