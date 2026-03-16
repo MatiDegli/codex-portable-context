@@ -229,6 +229,7 @@ For older mirror outputs, path resolution can fall back to:
 
 - [docs/architecture.md](docs/architecture.md)
 - [docs/mirror-contract.md](docs/mirror-contract.md)
+- [docs/python-v2-conventions.md](docs/python-v2-conventions.md)
 - [docs/security.md](docs/security.md)
 - [docs/mvp.md](docs/mvp.md)
 - [docs/transport.md](docs/transport.md)
