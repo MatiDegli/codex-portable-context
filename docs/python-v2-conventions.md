@@ -74,7 +74,18 @@ If the host default Python is newer, that is acceptable as long as project code 
   - open
 - latest
 - keep help output concise and example-driven
-- prefer module entrypoints such as `python -m codex_portable_context.cli.mirror` while v2 is still in migration
+- prefer installed console entrypoints after `pip install -e '.[dev]'`
+- keep `python -m codex_portable_context.cli.<command>` working as an explicit fallback
+- treat Bash wrappers as transitional compatibility only, not as the primary usage path
+
+Recommended developer flow:
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+codex-session-mirror --help
+```
 
 ## Testing and Validation Rules
 
@@ -85,6 +96,6 @@ If the host default Python is newer, that is acceptable as long as project code 
 
 ## Bash Policy
 
-- do not remove working v1 Bash scripts yet
-- do not keep expanding Bash as the long-term core
-- once Python reaches parity, decide whether Bash remains as thin wrappers or is retired with a documented migration path
+- keep Bash only as thin compatibility wrappers during the transition window
+- do not restore Bash business logic as a second active core
+- decide wrapper deprecation timing after Python-first ergonomics and Windows-native validation are in better shape

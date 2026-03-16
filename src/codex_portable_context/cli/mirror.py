@@ -18,8 +18,16 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser for the Python mirror exporter."""
 
     parser = argparse.ArgumentParser(
-        prog="python -m codex_portable_context.cli.mirror",
+        prog="codex-session-mirror",
         description="Export a read-only derived mirror of local Codex sessions.",
+        epilog=(
+            "Examples:\n"
+            "  codex-session-mirror\n"
+            "  codex-session-mirror --redact\n"
+            "  codex-session-mirror --out-dir ./out-custom\n"
+            "  python -m codex_portable_context.cli.mirror --conversation-only"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--codex-home",

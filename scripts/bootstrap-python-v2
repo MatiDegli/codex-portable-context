@@ -37,3 +37,8 @@ cd -- "${REPO_ROOT}"
 
 printf 'Python v2 environment ready at %s\n' "${VENV_DIR}"
 printf 'Using interpreter: %s\n' "${PYTHON_BIN_RESOLVED}"
+printf 'Installed entrypoints:\n'
+printf '  %s/bin/codex-session-mirror --help\n' "${VENV_DIR}"
+printf '  %s/bin/codex-session-list --help\n' "${VENV_DIR}"
+printf 'Fallback module form:\n'
+printf '  %s/bin/python -m codex_portable_context.cli.mirror --help\n' "${VENV_DIR}"

@@ -20,8 +20,16 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser for derived mirror listing."""
 
     parser = argparse.ArgumentParser(
-        prog="python -m codex_portable_context.cli.list",
+        prog="codex-session-list",
         description="List exported sessions from the derived Codex mirror.",
+        epilog=(
+            "Examples:\n"
+            "  codex-session-list --latest\n"
+            "  codex-session-list --latest --summary --details\n"
+            "  codex-session-list --title galaxy --limit 5\n"
+            "  python -m codex_portable_context.cli.list --json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--out-dir", type=Path, help="Read the mirror from this directory.")
     parser.add_argument("--limit", type=int, default=0, help="Limit the number of listed sessions.")

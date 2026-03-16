@@ -16,36 +16,32 @@
 - it does not resume sessions
 - it does not add a daemon, backend, or network dependency
 
-## Quick Start
+## Python-First Quick Start
 
-Create the default mirror:
+Recommended path: create an explicit environment, install the package in editable mode, and use the Python entrypoints directly.
+
+Linux:
 
 ```bash
-./scripts/codex-session-mirror
+./scripts/bootstrap-python-v2
+.venv/bin/codex-session-mirror
+.venv/bin/codex-session-list --latest --summary
 ```
 
-Create a redacted mirror:
+Windows PowerShell:
 
-```bash
-./scripts/codex-session-mirror --redact
+```powershell
+py -3.13 -m venv .venv
+.venv\Scripts\python -m pip install --upgrade pip
+.venv\Scripts\python -m pip install -e '.[dev]'
+.venv\Scripts\codex-session-mirror.exe
+.venv\Scripts\codex-session-list.exe --latest --summary
 ```
 
-List recent exported sessions:
+Direct module invocation is also supported:
 
 ```bash
-./scripts/codex-session-list --latest --summary
-```
-
-Print the mirror landing page path:
-
-```bash
-./scripts/codex-session-open --landing --print
-```
-
-Open the latest exported session:
-
-```bash
-./scripts/codex-session-open --latest
+.venv/bin/python -m codex_portable_context.cli.mirror
 ```
 
 If you are browsing a copied or synced mirror directly, start with `out/README.md`.
@@ -69,83 +65,131 @@ Use `out/README.md` as the main entry point when browsing the mirror on another 
 
 Repeated runs reuse unchanged derived artifacts when possible. The hidden state file is local bookkeeping for the mirror output only.
 
-## Common Commands
+## Install and Run
+
+The minimal install story is intentionally small:
+
+- local development: editable install in a project `venv`
+- local usage: run the installed console scripts from that `venv`
+- fallback usage: `python -m codex_portable_context.cli.<command>`
+- Bash wrappers: transitional only, not the primary path
+
+Linux setup:
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+```
+
+Windows setup:
+
+```powershell
+py -3.13 -m venv .venv
+.venv\Scripts\python -m pip install --upgrade pip
+.venv\Scripts\python -m pip install -e '.[dev]'
+```
+
+Installed console entrypoints:
+
+```bash
+.venv/bin/codex-session-mirror
+.venv/bin/codex-session-list
+.venv/bin/codex-session-open
+.venv/bin/codex-session-latest
+```
+
+```powershell
+.venv\Scripts\codex-session-mirror.exe
+.venv\Scripts\codex-session-list.exe
+.venv\Scripts\codex-session-open.exe
+.venv\Scripts\codex-session-latest.exe
+```
+
+Module fallback:
+
+```bash
+.venv/bin/python -m codex_portable_context.cli.mirror
+.venv/bin/python -m codex_portable_context.cli.list
+.venv/bin/python -m codex_portable_context.cli.open
+.venv/bin/python -m codex_portable_context.cli.latest
+```
 
 Default export:
 
 ```bash
-./scripts/codex-session-mirror
+.venv/bin/codex-session-mirror
 ```
 
 Redacted export:
 
 ```bash
-./scripts/codex-session-mirror --redact
+.venv/bin/codex-session-mirror --redact
 ```
 
 Conversation-focused export:
 
 ```bash
-./scripts/codex-session-mirror --conversation-only
+.venv/bin/codex-session-mirror --conversation-only
 ```
 
 Trim selected sections:
 
 ```bash
-./scripts/codex-session-mirror --no-context --no-events
-./scripts/codex-session-mirror --no-tools
+.venv/bin/codex-session-mirror --no-context --no-events
+.venv/bin/codex-session-mirror --no-tools
 ```
 
 Use a custom output directory:
 
 ```bash
-./scripts/codex-session-mirror --out-dir ./out-custom
+.venv/bin/codex-session-mirror --out-dir ./out-custom
 ```
 
 ## Helper Commands
 
 These commands operate only on the derived mirror, never on raw `~/.codex`.
 
-- `./scripts/codex-session-list`
+- `codex-session-list`
   Useful flags: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--details`, `--redaction`, `--json`
-- `./scripts/codex-session-open <session-id-or-prefix>`
+- `codex-session-open <session-id-or-prefix>`
   Useful flags: `--metadata`, `--print`, `--out-dir`, `--landing`, `--latest`
-- `./scripts/codex-session-latest`
+- `codex-session-latest`
   Useful flags: `--metadata`, `--print`, `--out-dir`
 
 Examples:
 
 ```bash
-./scripts/codex-session-list --latest
-./scripts/codex-session-list --latest --summary --details
-./scripts/codex-session-list --title galaxy --limit 5
-./scripts/codex-session-list --out-dir ./out-redacted --latest --redaction
-./scripts/codex-session-open 019cef3a --print
-./scripts/codex-session-open --metadata 019cef3a --print
-./scripts/codex-session-latest --print
-./scripts/codex-session-latest --metadata --print
+codex-session-list --latest
+codex-session-list --latest --summary --details
+codex-session-list --title galaxy --limit 5
+codex-session-list --out-dir ./out-redacted --latest --redaction
+codex-session-open 019cef3a --print
+codex-session-open --metadata 019cef3a --print
+codex-session-latest --print
+codex-session-latest --metadata --print
 ```
 
 Both `codex-session-open --help` and `codex-session-latest --help` now include short built-in examples so the common open/print flows are easier to discover from the terminal.
 
 `codex-session-mirror --help` and `codex-session-list --help` now follow the same pattern, so all four main helper commands present examples in a consistent style.
 
-## v2 Direction
+## Python-Primary Status
 
-Python is now the primary implementation path for v2.
+Python is the active implementation path for v2.
 
-The next planned architecture step is a Python-based v2 so the project can support:
+That means:
 
-- Linux native
-- Windows native
-- real cross-OS portability
-- the same conceptual UX across platforms
+- the shared implementation lives under `src/codex_portable_context/`
+- installed console scripts are the main user-facing path
+- direct `python -m ...` invocation is fully supported
+- the Bash commands under `scripts/` are temporary compatibility wrappers
+- the last full Bash implementation is preserved historically via the `bash-v1-baseline` tag
 
-This is intended as an implementation shift, not a product-thesis shift. The derived mirror remains the core output.
+The product thesis did not change. The tool still builds a derived, read-only mirror and keeps raw Codex state untouched.
 
-Initial Python Phase 2 work now lives under `src/codex_portable_context/`, with shared core modules for contract constants, source discovery, index loading, session resolution, and cross-platform file opening.
-
-## Python v2 Bootstrap
+## Bootstrap and Validation
 
 Canonical bootstrap path:
 
@@ -159,29 +203,20 @@ Canonical validation path:
 ./scripts/validate-python-v2
 ```
 
-The Python v2 baseline currently uses:
+The current Python baseline uses:
 
 - `pytest` for tests
 - `ruff` for linting
 - `mypy` for static typing
 
-Primary Python entrypoints:
+After the editable install, the recommended commands are:
 
 ```bash
-./.venv/bin/python -m codex_portable_context.cli.mirror
-./.venv/bin/python -m codex_portable_context.cli.list
-./.venv/bin/python -m codex_portable_context.cli.list --latest --summary --details
-./.venv/bin/python -m codex_portable_context.cli.open --latest --print
-./.venv/bin/python -m codex_portable_context.cli.open 019cef3a --metadata --print
-./.venv/bin/python -m codex_portable_context.cli.open --landing
-./.venv/bin/python -m codex_portable_context.cli.latest --print
-./.venv/bin/python -m codex_portable_context.cli.latest --metadata --print
+.venv/bin/codex-session-mirror --help
+.venv/bin/codex-session-list --help
+.venv/bin/codex-session-open --help
+.venv/bin/codex-session-latest --help
 ```
-
-The familiar Bash command names under `scripts/` are now thin compatibility wrappers that delegate to those Python CLIs. They are retained for transition safety, but they are no longer the main implementation.
-
-Phase 7 parity status remains tracked in [docs/phase7-parity.md](docs/phase7-parity.md).
-The last full Bash baseline is preserved in git as the `bash-v1-baseline` tag.
 
 ## Python v2 Baseline
 
@@ -199,12 +234,12 @@ python3.13 -m venv .venv
 source .venv/bin/activate
 ```
 
-After the environment is bootstrapped, the current Python mirror exporter can be run with:
+After the environment is bootstrapped, the Python mirror exporter can be run with:
 
 ```bash
-./.venv/bin/python -m codex_portable_context.cli.mirror
-./.venv/bin/python -m codex_portable_context.cli.mirror --redact
-./.venv/bin/python -m codex_portable_context.cli.mirror --out-dir ./out-python
+.venv/bin/codex-session-mirror
+.venv/bin/codex-session-mirror --redact
+.venv/bin/codex-session-mirror --out-dir ./out-python
 ```
 
 If the host default Python is newer, that is not automatically a problem. The project baseline is about the project environment, not about forcing the operating system itself to use Python 3.13 as its system Python.
@@ -224,8 +259,25 @@ That means:
 
 - existing shell-oriented usage still works through the familiar command names
 - direct Python invocation is supported and recommended for v2 workflows
+- installed console scripts inside the project `venv` are the main recommended path
 - Bash remains in the repo for a short compatibility window, but it is no longer the architectural center
 - the last full Bash implementation remains available historically via the `bash-v1-baseline` tag
+
+## Cross-Platform Support Status
+
+Current status:
+
+- Linux is the main day-to-day development and validation environment
+- Python v2 is designed for Linux and Windows native usage
+- cross-OS path handling and Windows-style path redaction are covered by tests
+- native Windows command validation is planned explicitly and documented
+
+What is not being claimed yet:
+
+- this repo is not claiming completed Windows-native validation from this Linux environment
+- the Bash wrappers are not the cross-platform path
+
+For the concrete Windows-native setup and validation checklist, see [docs/windows-native-validation.md](docs/windows-native-validation.md).
 
 ## Export Quality
 
@@ -313,8 +365,10 @@ For older mirror outputs, path resolution can fall back to:
 
 - [docs/architecture.md](docs/architecture.md)
 - [docs/mirror-contract.md](docs/mirror-contract.md)
+- [docs/phase7-parity.md](docs/phase7-parity.md)
 - [docs/python-v2-conventions.md](docs/python-v2-conventions.md)
 - [docs/security.md](docs/security.md)
 - [docs/mvp.md](docs/mvp.md)
 - [docs/transport.md](docs/transport.md)
 - [docs/v2-python-migration.md](docs/v2-python-migration.md)
+- [docs/windows-native-validation.md](docs/windows-native-validation.md)

@@ -139,6 +139,7 @@ Preferred semantic continuity:
 - keep the same conceptual command names
 - keep the same main flags where reasonable
 - keep the same mirror layout and helper expectations
+- expose installed console entrypoints with those same command names once the package is installed into a project environment
 
 ## Cross-OS Concerns
 
@@ -270,6 +271,45 @@ Current status:
 - Bash is retained for a short compatibility window and has not been deleted yet
 - the last full Bash implementation is preserved as the `bash-v1-baseline` git tag
 
+## Current Python-First Usage
+
+The project now has a small but coherent Python-first install story:
+
+- create an explicit project environment
+- install the package in editable mode
+- use the installed console entrypoints as the main command path
+- keep `python -m codex_portable_context.cli.<command>` as a fallback
+
+Recommended setup:
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+```
+
+After installation, the preferred commands are:
+
+```bash
+codex-session-mirror
+codex-session-list
+codex-session-open
+codex-session-latest
+```
+
+The Bash entrypoints under `scripts/` still exist, but they are no longer the primary implementation path.
+
+## Windows-Native Validation Status
+
+Python v2 is designed for Windows native usage, but native Windows command validation is not claimed from this Linux environment alone.
+
+Current posture:
+
+- Windows-oriented path handling and redaction rules are covered by tests
+- opener behavior is implemented deliberately for Windows via `os.startfile()`
+- native Windows setup and command validation should follow the explicit checklist in [windows-native-validation.md](windows-native-validation.md)
+
 ## Bash Wrapper Recommendation
 
 Recommended path:
@@ -319,11 +359,11 @@ The goal is compatibility first, cleanup second.
 
 ## Recommended Next Step
 
-Do not start by porting all commands.
+Do not add more product architecture right now.
 
 The next practical step should be:
 
-1. keep v1 frozen
-2. begin Phase 2 by creating the Python core skeleton
-3. implement only the first shared internal modules needed for mirror generation
-4. port `codex-session-mirror` first and validate it against the frozen contract
+1. keep Python as the single active implementation core
+2. validate the Python-first install story on real Windows native environments
+3. gather short-term usage feedback on the console entrypoints and docs
+4. decide the wrapper deprecation window after that validation

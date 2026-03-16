@@ -11,8 +11,16 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser for the latest-session helper."""
 
     parser = argparse.ArgumentParser(
-        prog="python -m codex_portable_context.cli.latest",
+        prog="codex-session-latest",
         description="Open or print the most recent exported session from the derived mirror.",
+        epilog=(
+            "Examples:\n"
+            "  codex-session-latest\n"
+            "  codex-session-latest --print\n"
+            "  codex-session-latest --metadata --print\n"
+            "  python -m codex_portable_context.cli.latest --out-dir ./out-redacted --print"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--out-dir", help="Read the mirror from this directory.")
     parser.add_argument(

@@ -22,8 +22,16 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser for derived mirror opening."""
 
     parser = argparse.ArgumentParser(
-        prog="python -m codex_portable_context.cli.open",
+        prog="codex-session-open",
         description="Open or print a derived session export from the local mirror.",
+        epilog=(
+            "Examples:\n"
+            "  codex-session-open --latest\n"
+            "  codex-session-open --landing --print\n"
+            "  codex-session-open 019cef3a --metadata --print\n"
+            "  python -m codex_portable_context.cli.open --latest --print"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--out-dir", type=Path, help="Read the mirror from this directory.")
     parser.add_argument(
@@ -93,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
     target_path = entry_path(entry, target_kind, out_dir)
     if not target_path.is_file():
         sys.stderr.write(f"Derived file not found: {target_path}\n")
-        sys.stderr.write("Re-run scripts/codex-session-mirror to refresh the mirror.\n")
+        sys.stderr.write("Re-run codex-session-mirror to refresh the mirror.\n")
         return 1
 
     if args.print:

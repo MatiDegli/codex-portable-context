@@ -60,7 +60,8 @@ def test_bash_wrapper_mirror_help_delegates_to_python() -> None:
         text=True,
     )
 
-    assert "python -m codex_portable_context.cli.mirror" in result.stdout
+    assert "codex-session-mirror" in result.stdout
+    assert "Examples:" in result.stdout
 
 
 def ensure_local_mirror() -> Path:

@@ -19,9 +19,12 @@ Phase 7 kept the Bash implementation in place as the explicit v1 reference while
 
 ### Intentionally still different
 
-- Python help text and program names use `python -m ...` entrypoints instead of Bash script names.
 - Python transcript and landing prose are not expected to be byte-for-byte identical to Bash output.
-- Python remains the migration path, while Bash remains the frozen behavioral reference.
+- Python is now the active path, while Bash remains the frozen behavioral reference for historical comparison.
+
+Later follow-up:
+
+- the Python-first ergonomics pass switched help output to the installed command names such as `codex-session-mirror`, while keeping `python -m ...` available as a fallback invocation path
 
 ### Current parity confidence
 

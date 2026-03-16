@@ -73,3 +73,16 @@ Why:
 
 - parity and cross-OS hardening were strong enough to stop carrying two active implementation cores
 - a single Python core is more scalable and maintainable than indefinite Bash/Python duplication
+
+## 2026-03-16 - Python-first install story kept intentionally small
+
+Decision:
+
+- use editable install plus console entrypoints as the main Python usage path
+- keep `python -m codex_portable_context.cli.<command>` as a fallback
+- keep Bash only as a transitional compatibility layer
+
+Why:
+
+- this gives Linux and Windows users one coherent command model without adding heavy packaging machinery
+- it keeps the project easy to understand for a solo developer while still feeling like a serious Python-first tool
