@@ -247,16 +247,27 @@ Current status:
 - it stays intentionally thin by delegating to the Python open CLI with `--latest`
 - it supports `--out-dir`, `--metadata`, and `--print`
 
-### Phase 7: Decide Bash wrapper policy
+### Phase 7: Parity and cross-OS hardening
 
-- either keep Bash scripts as thin compatibility wrappers
-- or deprecate them after the Python CLIs are stable and documented
+- verify Python behavior against the Bash baseline
+- harden Linux and Windows behavior before wrapper conversion
 
 Current status:
 
-- wrapper conversion is intentionally deferred
-- this phase is being used for parity validation and cross-OS hardening instead
+- parity validation and cross-OS hardening were completed before the wrapper transition
 - see [phase7-parity.md](phase7-parity.md) for the current findings
+
+### Phase 8: Promote Python and transition Bash to wrappers
+
+- make Python the primary v2 path
+- convert Bash command entrypoints into thin compatibility wrappers
+- keep Bash temporarily, but no longer as the main implementation
+
+Current status:
+
+- Python is now the primary implementation path for v2
+- the Bash command names in `scripts/` are now thin compatibility wrappers
+- Bash is retained for a short compatibility window and has not been deleted yet
 
 ## Bash Wrapper Recommendation
 
@@ -269,9 +280,9 @@ Recommended path:
 
 Current recommendation:
 
-- do not remove Bash now
-- do not expand Bash meaningfully further
-- plan to deprecate Bash after Python v2 reaches parity
+- keep the wrappers small and transitional
+- do not restore Bash business logic into them
+- remove or deprecate the wrappers only after a short compatibility window
 
 ## Minimal Repo Preparation
 

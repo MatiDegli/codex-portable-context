@@ -2,7 +2,7 @@
 
 ## Scope
 
-Phase 7 keeps the Bash implementation in place as the explicit v1 reference while reviewing the Python CLIs for:
+Phase 7 kept the Bash implementation in place as the explicit v1 reference while reviewing the Python CLIs for:
 
 - parity with important Bash semantics
 - cross-OS hardening for Linux and Windows native usage
@@ -28,6 +28,14 @@ Phase 7 keeps the Bash implementation in place as the explicit v1 reference whil
 - `list --json` matches Bash behavior on the same derived mirror.
 - `open --print` and `latest --print` match Bash path resolution semantics on the same derived mirror.
 - Python and Bash mirror exports align on the stable metadata fields that matter for the contract.
+
+## Outcome
+
+This parity review was strong enough to support the Phase 8 transition:
+
+- Python is now the primary implementation path
+- Bash can move to thin compatibility wrappers
+- the Bash code no longer needs to remain a second full implementation core
 
 ## Remaining Pre-Wrapper Limitations
 

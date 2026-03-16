@@ -1,83 +1,10 @@
 #!/usr/bin/env bash
-# Open or print the latest derived session export from the local mirror.
+# Transitional compatibility wrapper for the Python latest CLI.
 
 set -euo pipefail
 
-readonly SCRIPT_NAME="$(basename "$0")"
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-source "${SCRIPT_DIR}/libcodex-session.sh"
+source "${SCRIPT_DIR}/libcodex-python-wrapper.sh"
 
-out_dir=""
-target_kind="markdown"
-print_only="false"
-
-usage() {
-  cat <<EOF
-Usage: ${SCRIPT_NAME} [--out-dir PATH] [--metadata] [--print]
-
-Open or print the most recent exported session from the derived mirror.
-
-Examples:
-  ${SCRIPT_NAME}
-  ${SCRIPT_NAME} --print
-  ${SCRIPT_NAME} --metadata
-  ${SCRIPT_NAME} --metadata --print
-EOF
-}
-
-while (($# > 0)); do
-  case "$1" in
-    --out-dir)
-      out_dir="${2:?Missing value for --out-dir}"
-      shift 2
-      ;;
-    --metadata)
-      target_kind="metadata"
-      shift
-      ;;
-    --print)
-      print_only="true"
-      shift
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      printf 'Unknown argument: %s\n' "$1" >&2
-      usage >&2
-      exit 1
-      ;;
-  esac
-done
-
-mirror_require_cmd jq
-
-if [[ -z "${out_dir}" ]]; then
-  out_dir="$(mirror_default_out_dir)"
-fi
-index_path="$(mirror_require_index "${out_dir}")"
-entry_json="$(mirror_latest_entry "${index_path}")"
-
-if [[ "${entry_json}" == "null" || -z "${entry_json}" ]]; then
-  printf 'No exported sessions are available in %s\n' "${out_dir}" >&2
-  exit 1
-fi
-
-target_path="$(mirror_entry_path "${out_dir}" "${target_kind}" "${entry_json}")"
-
-if [[ ! -f "${target_path}" ]]; then
-  printf 'Derived file not found: %s\n' "${target_path}" >&2
-  printf 'Re-run scripts/codex-session-mirror to refresh the mirror.\n' >&2
-  exit 1
-fi
-
-if [[ "${print_only}" == "true" ]]; then
-  printf '%s\n' "${target_path}"
-  exit 0
-fi
-
-printf 'Opening latest %s: %s\n' "${target_kind}" "$(mirror_entry_brief_label "${entry_json}")" >&2
-
-mirror_open_file "${target_path}"
+codex_exec_python_cli "codex_portable_context.cli.latest" "$@"

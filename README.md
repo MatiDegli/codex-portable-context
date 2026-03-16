@@ -132,7 +132,7 @@ Both `codex-session-open --help` and `codex-session-latest --help` now include s
 
 ## v2 Direction
 
-v1 is now the frozen Bash baseline.
+Python is now the primary implementation path for v2.
 
 The next planned architecture step is a Python-based v2 so the project can support:
 
@@ -165,37 +165,22 @@ The Python v2 baseline currently uses:
 - `ruff` for linting
 - `mypy` for static typing
 
-Phase 3 now also includes an initial Python exporter entrypoint:
+Primary Python entrypoints:
 
 ```bash
 ./.venv/bin/python -m codex_portable_context.cli.mirror
-```
-
-The Bash exporter in `scripts/codex-session-mirror` remains the frozen v1 reference. The Python entrypoint is the active Phase 3 migration path for the mirror command.
-
-Phase 4 now also includes an initial Python list entrypoint:
-
-```bash
 ./.venv/bin/python -m codex_portable_context.cli.list
 ./.venv/bin/python -m codex_portable_context.cli.list --latest --summary --details
-```
-
-Phase 5 now also includes an initial Python open entrypoint:
-
-```bash
 ./.venv/bin/python -m codex_portable_context.cli.open --latest --print
 ./.venv/bin/python -m codex_portable_context.cli.open 019cef3a --metadata --print
 ./.venv/bin/python -m codex_portable_context.cli.open --landing
-```
-
-Phase 6 now also includes an initial Python latest entrypoint:
-
-```bash
 ./.venv/bin/python -m codex_portable_context.cli.latest --print
 ./.venv/bin/python -m codex_portable_context.cli.latest --metadata --print
 ```
 
-Phase 7 is currently focused on parity validation and cross-OS hardening, not on wrapping or retiring the Bash commands yet. The current parity status is tracked in [docs/phase7-parity.md](docs/phase7-parity.md).
+The familiar Bash command names under `scripts/` are now thin compatibility wrappers that delegate to those Python CLIs. They are retained for transition safety, but they are no longer the main implementation.
+
+Phase 7 parity status remains tracked in [docs/phase7-parity.md](docs/phase7-parity.md).
 
 ## Python v2 Baseline
 
@@ -222,6 +207,23 @@ After the environment is bootstrapped, the current Python mirror exporter can be
 ```
 
 If the host default Python is newer, that is not automatically a problem. The project baseline is about the project environment, not about forcing the operating system itself to use Python 3.13 as its system Python.
+
+## Wrapper Status
+
+The Bash entrypoints:
+
+- `./scripts/codex-session-mirror`
+- `./scripts/codex-session-list`
+- `./scripts/codex-session-open`
+- `./scripts/codex-session-latest`
+
+are now transitional compatibility wrappers over the Python CLIs.
+
+That means:
+
+- existing shell-oriented usage still works through the familiar command names
+- direct Python invocation is supported and recommended for v2 workflows
+- Bash remains in the repo for a short compatibility window, but it is no longer the architectural center
 
 ## Export Quality
 
