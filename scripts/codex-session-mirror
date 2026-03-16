@@ -582,7 +582,7 @@ write_landing() {
             "# Codex Portable Context Mirror",
             "",
             "This directory is a derived read-only mirror generated from local Codex session exports.",
-            "It is intended for browsing and transport. It is not a writable Codex state directory.",
+            "Use the links below for reading and transport. This is not a writable Codex state directory.",
             "",
             "## Mirror Summary",
             "",
@@ -599,9 +599,9 @@ write_landing() {
               [
                 "## Start Here",
                 "",
-                "- Latest transcript: [" + markdown_path($latest_entry) + "](" + markdown_path($latest_entry) + ")",
-                "- Latest metadata: [" + metadata_path($latest_entry) + "](" + metadata_path($latest_entry) + ")",
-                "- `sessions-index.jsonl` is the machine-readable index for scripting and helper CLIs.",
+                "- Open the latest transcript for the readable conversation view: [" + markdown_path($latest_entry) + "](" + markdown_path($latest_entry) + ")",
+                "- Open the latest metadata for structured fields and redaction info: [" + metadata_path($latest_entry) + "](" + metadata_path($latest_entry) + ")",
+                "- Use `sessions-index.jsonl` for scripting and helper CLIs.",
                 ""
               ]
             end

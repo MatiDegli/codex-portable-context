@@ -48,6 +48,8 @@ Open the latest exported session:
 ./scripts/codex-session-open --latest
 ```
 
+If you are browsing a copied or synced mirror directly, start with `out/README.md`.
+
 ## Mirror Output
 
 By default the exporter writes:
@@ -196,6 +198,10 @@ They currently rely on these fields:
 - `session_timestamp`
 - `metadata_relpath`
 - `markdown_relpath`
+- `summary.preview`
+- `summary.activity`
+- `summary.environment`
+- `summary.detail_line`
 - `summary.one_line`
 - `redaction_report`
 

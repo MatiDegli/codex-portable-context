@@ -121,6 +121,10 @@ The helpers assume `sessions-index.jsonl` exposes at least:
 - `session_timestamp`
 - `metadata_relpath`
 - `markdown_relpath`
+- `summary.preview`
+- `summary.activity`
+- `summary.environment`
+- `summary.detail_line`
 - `summary.one_line`
 - `redaction_report`
 
