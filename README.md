@@ -143,6 +143,8 @@ The next planned architecture step is a Python-based v2 so the project can suppo
 
 This is intended as an implementation shift, not a product-thesis shift. The derived mirror remains the core output.
 
+Initial Python Phase 2 work now lives under `src/codex_portable_context/`, with shared core modules for contract constants, source discovery, index loading, session resolution, and cross-platform file opening.
+
 ## Python v2 Baseline
 
 The planned Python v2 work uses this runtime policy:

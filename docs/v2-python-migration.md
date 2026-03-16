@@ -195,6 +195,14 @@ Cross-platform opener direction:
 - design internal modules around responsibilities, not scripts
 - add parsing, summary, redaction, and state abstractions
 
+Initial Phase 2 baseline now exists in the repo with shared modules for:
+
+- mirror contract constants
+- source and output discovery
+- index loading
+- session resolution
+- cross-platform opening helpers
+
 ### Phase 3: Port `codex-session-mirror`
 
 - highest-value command
