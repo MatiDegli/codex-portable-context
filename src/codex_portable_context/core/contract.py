@@ -6,10 +6,23 @@ from dataclasses import dataclass
 from pathlib import Path
 
 LANDING_FILENAME = "README.md"
+LANDING_MARKER = "<!-- codex-portable-context: derived-mirror -->"
 INDEX_FILENAME = "sessions-index.jsonl"
 STATE_FILENAME = ".codex-session-mirror-state.jsonl"
 METADATA_DIRNAME = "metadata"
 SESSIONS_DIRNAME = "sessions"
+EXPORT_FORMAT_VERSION = 6
+
+MARKDOWN_FILTER_RULES = (
+    "Routine token_count events are omitted from Markdown.",
+    "turn_context records are omitted from Markdown.",
+    (
+        "Assistant response_item message wrappers are omitted when "
+        "agent_message events already carry the readable text."
+    ),
+    "Notable lifecycle events are grouped in a separate Markdown section.",
+    "Raw source session files remain the authoritative input.",
+)
 
 SUMMARY_REQUIRED_FIELDS = (
     "preview",

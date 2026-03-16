@@ -72,8 +72,9 @@ If the host default Python is newer, that is acceptable as long as project code 
   - mirror
   - list
   - open
-  - latest
+- latest
 - keep help output concise and example-driven
+- prefer module entrypoints such as `python -m codex_portable_context.cli.mirror` while v2 is still in migration
 
 ## Testing and Validation Rules
 

@@ -209,6 +209,12 @@ Initial Phase 2 baseline now exists in the repo with shared modules for:
 - use it to prove cross-OS mirror generation
 - compare Python output to v1 output as the compatibility baseline
 
+Current status:
+
+- an initial Python exporter now exists at `python -m codex_portable_context.cli.mirror`
+- it uses shared core modules for parsing, summaries, redaction, state handling, markdown rendering, landing generation, and mirror writing
+- the Bash exporter remains the frozen v1 reference while compatibility is validated
+
 ### Phase 4: Port `codex-session-list`
 
 - move helper logic onto the shared Python index/summary layer

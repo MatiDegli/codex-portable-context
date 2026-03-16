@@ -165,6 +165,14 @@ The Python v2 baseline currently uses:
 - `ruff` for linting
 - `mypy` for static typing
 
+Phase 3 now also includes an initial Python exporter entrypoint:
+
+```bash
+./.venv/bin/python -m codex_portable_context.cli.mirror
+```
+
+The Bash exporter in `scripts/codex-session-mirror` remains the frozen v1 reference. The Python entrypoint is the active Phase 3 migration path for the mirror command.
+
 ## Python v2 Baseline
 
 The planned Python v2 work uses this runtime policy:
@@ -179,6 +187,14 @@ Recommended development setup:
 ```bash
 python3.13 -m venv .venv
 source .venv/bin/activate
+```
+
+After the environment is bootstrapped, the current Python mirror exporter can be run with:
+
+```bash
+./.venv/bin/python -m codex_portable_context.cli.mirror
+./.venv/bin/python -m codex_portable_context.cli.mirror --redact
+./.venv/bin/python -m codex_portable_context.cli.mirror --out-dir ./out-python
 ```
 
 If the host default Python is newer, that is not automatically a problem. The project baseline is about the project environment, not about forcing the operating system itself to use Python 3.13 as its system Python.
