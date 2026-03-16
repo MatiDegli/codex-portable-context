@@ -84,6 +84,22 @@ Export profile flags affect only the derived Markdown view. They do not change t
 
 Incremental export is now part of the core local flow. Repeated runs may reuse unchanged per-session artifacts, but the source of truth remains the raw session files under `~/.codex/sessions`.
 
+## v1 and v2
+
+The current Bash implementation should now be treated as the frozen v1 baseline.
+
+Planned v2 direction:
+
+- preserve the product architecture
+- freeze the mirror contract first
+- move the implementation core to Python
+- keep `scripts/` stable until Python reaches parity
+
+See:
+
+- [mirror-contract.md](mirror-contract.md)
+- [v2-python-migration.md](v2-python-migration.md)
+
 ## Non-Goals
 
 - no write-back to `~/.codex/sessions`

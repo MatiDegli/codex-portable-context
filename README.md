@@ -130,6 +130,19 @@ Both `codex-session-open --help` and `codex-session-latest --help` now include s
 
 `codex-session-mirror --help` and `codex-session-list --help` now follow the same pattern, so all four main helper commands present examples in a consistent style.
 
+## v2 Direction
+
+v1 is now the frozen Bash baseline.
+
+The next planned architecture step is a Python-based v2 so the project can support:
+
+- Linux native
+- Windows native
+- real cross-OS portability
+- the same conceptual UX across platforms
+
+This is intended as an implementation shift, not a product-thesis shift. The derived mirror remains the core output.
+
 ## Export Quality
 
 The transcript export is optimized for useful reading. It separates:
@@ -215,6 +228,8 @@ For older mirror outputs, path resolution can fall back to:
 ## Docs
 
 - [docs/architecture.md](docs/architecture.md)
+- [docs/mirror-contract.md](docs/mirror-contract.md)
 - [docs/security.md](docs/security.md)
 - [docs/mvp.md](docs/mvp.md)
 - [docs/transport.md](docs/transport.md)
+- [docs/v2-python-migration.md](docs/v2-python-migration.md)

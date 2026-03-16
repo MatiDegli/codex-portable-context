@@ -6,3 +6,5 @@ tmp/
 out/
 out-redacted/
 dist/
+__pycache__/
+*.pyc
