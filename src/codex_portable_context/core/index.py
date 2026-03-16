@@ -133,6 +133,8 @@ def entry_relpath(entry: MirrorEntry, kind: str, layout: MirrorLayout | None = N
         return str(entry.get("metadata_relpath") or active_layout.metadata_relpath(session_id))
     if kind == "reader":
         return str(entry.get("reader_relpath") or active_layout.reader_relpath(session_id))
+    if kind == "handoff":
+        return active_layout.handoff_markdown_relpath(session_id)
     raise ValueError(f"Unknown mirror entry kind: {kind}")
 
 

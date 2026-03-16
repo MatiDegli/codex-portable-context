@@ -33,6 +33,16 @@ def test_open_cli_prints_reader_paths(tmp_path: Path, capsys) -> None:
     assert reader_output.out.strip() == str(out_dir / "reader" / "session-1234.html")
 
 
+def test_open_cli_prints_handoff_path(tmp_path: Path, capsys) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+
+    exit_code = main(["--out-dir", str(out_dir), "session-1234", "--handoff", "--print"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out.strip() == str(out_dir / "handoffs" / "session-1234.md")
+
+
 def test_open_cli_latest_prints_transcript_path(tmp_path: Path, capsys) -> None:
     out_dir = build_fixture_mirror(tmp_path)
 
@@ -74,7 +84,18 @@ def test_open_cli_rejects_reader_and_metadata_combo(tmp_path: Path, capsys) -> N
 
     assert exit_code == 1
     assert captured.out == ""
-    assert "Use only one of --metadata or --reader." in captured.err
+    assert "Use only one of --metadata, --reader, or --handoff." in captured.err
+
+
+def test_open_cli_rejects_handoff_with_landing(tmp_path: Path, capsys) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+
+    exit_code = main(["--out-dir", str(out_dir), "--landing", "--handoff"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "--handoff cannot be combined with --landing." in captured.err
 
 
 def build_fixture_mirror(

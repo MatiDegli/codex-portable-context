@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from codex_portable_context.core.discovery import default_out_dir
+from codex_portable_context.core.handoff import generate_handoff
 from codex_portable_context.core.index import (
     entry_brief_label,
     entry_path,
@@ -31,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  codex-session-open --landing --print\n"
             "  codex-session-open --landing --reader --print\n"
             "  codex-session-open --latest --reader\n"
+            "  codex-session-open --latest --handoff --print\n"
             "  codex-session-open 019cef3a --metadata --print\n"
             "  python -m codex_portable_context.cli.open --latest --print"
         ),
@@ -46,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--reader",
         action="store_true",
         help="Target the generated HTML reader instead of the Markdown transcript.",
+    )
+    parser.add_argument(
+        "--handoff",
+        action="store_true",
+        help="Target the generated handoff Markdown instead of the Markdown transcript.",
     )
     parser.add_argument(
         "--print",
@@ -78,6 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         selector=args.selector,
         metadata=args.metadata,
         reader=args.reader,
+        handoff=args.handoff,
     )
     if error:
         sys.stderr.write(error + "\n")
@@ -112,8 +120,19 @@ def main(argv: list[str] | None = None) -> int:
             sys.stderr.write(f"{exc}\n")
             return 1
 
-    target_kind = "reader" if args.reader else "metadata" if args.metadata else "markdown"
+    target_kind = (
+        "handoff"
+        if args.handoff
+        else "reader"
+        if args.reader
+        else "metadata"
+        if args.metadata
+        else "markdown"
+    )
     target_path = entry_path(entry, target_kind, out_dir)
+    if args.handoff and not target_path.is_file():
+        generate_handoff(entry, out_dir)
+        target_path = entry_path(entry, target_kind, out_dir)
     if not target_path.is_file():
         sys.stderr.write(f"Derived file not found: {target_path}\n")
         sys.stderr.write("Re-run codex-session-mirror to refresh the mirror.\n")
@@ -138,6 +157,7 @@ def validate_args(
     selector: str | None,
     metadata: bool,
     reader: bool,
+    handoff: bool,
 ) -> str | None:
     """Validate the CLI argument combinations."""
 
@@ -145,8 +165,11 @@ def validate_args(
         return "Use only one of --landing or --latest."
     if open_landing and metadata:
         return "--metadata cannot be combined with --landing."
-    if metadata and reader:
-        return "Use only one of --metadata or --reader."
+    if open_landing and handoff:
+        return "--handoff cannot be combined with --landing."
+    chosen_modes = sum(1 for value in (metadata, reader, handoff) if value)
+    if chosen_modes > 1:
+        return "Use only one of --metadata, --reader, or --handoff."
     if not open_landing and not open_latest and not selector:
         return "Choose one of: --landing, --latest, or a session id/prefix."
     if (open_landing or open_latest) and selector:

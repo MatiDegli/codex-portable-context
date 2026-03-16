@@ -35,6 +35,16 @@ def test_latest_cli_prints_reader_path(tmp_path: Path, capsys) -> None:
     assert captured.out.strip() == str(out_dir / "reader" / "session-5678.html")
 
 
+def test_latest_cli_prints_handoff_path(tmp_path: Path, capsys) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+
+    exit_code = main(["--out-dir", str(out_dir), "--handoff", "--print"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out.strip() == str(out_dir / "handoffs" / "session-5678.md")
+
+
 def build_fixture_mirror(tmp_path: Path) -> Path:
     codex_home = tmp_path / ".codex"
     source_dir = codex_home / "sessions" / "2026" / "03" / "16"

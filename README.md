@@ -176,9 +176,9 @@ These commands operate only on the derived mirror, never on raw `~/.codex`.
 - `codex-session-list`
   Useful flags: `--limit`, `--latest`, `--title`, `--id`, `--summary`, `--details`, `--redaction`, `--json`
 - `codex-session-open <session-id-or-prefix>`
-  Useful flags: `--metadata`, `--reader`, `--print`, `--out-dir`, `--landing`, `--latest`
+  Useful flags: `--metadata`, `--reader`, `--handoff`, `--print`, `--out-dir`, `--landing`, `--latest`
 - `codex-session-latest`
-  Useful flags: `--metadata`, `--reader`, `--print`, `--out-dir`
+  Useful flags: `--metadata`, `--reader`, `--handoff`, `--print`, `--out-dir`
 - `codex-session-handoff`
   Useful flags: `--latest`, `--print`, `--out-dir`
 
@@ -192,9 +192,11 @@ codex-session-list --out-dir ./out-redacted --latest --redaction
 codex-session-open 019cef3a --print
 codex-session-open --landing --reader --print
 codex-session-open 019cef3a --reader --print
+codex-session-open 019cef3a --handoff --print
 codex-session-open --metadata 019cef3a --print
 codex-session-latest --print
 codex-session-latest --reader --print
+codex-session-latest --handoff --print
 codex-session-latest --metadata --print
 codex-session-handoff --latest
 codex-session-handoff 019cef3a --print
