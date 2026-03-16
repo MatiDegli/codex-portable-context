@@ -143,6 +143,24 @@ The next planned architecture step is a Python-based v2 so the project can suppo
 
 This is intended as an implementation shift, not a product-thesis shift. The derived mirror remains the core output.
 
+## Python v2 Baseline
+
+The planned Python v2 work uses this runtime policy:
+
+- baseline development target: Python 3.13
+- supported target: Python 3.13+
+- host operating systems may have a newer system Python and that is acceptable
+- project environments should be created explicitly instead of relying on the host default Python implicitly
+
+Recommended development setup:
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+```
+
+If the host default Python is newer, that is not automatically a problem. The project baseline is about the project environment, not about forcing the operating system itself to use Python 3.13 as its system Python.
+
 ## Export Quality
 
 The transcript export is optimized for useful reading. It separates:

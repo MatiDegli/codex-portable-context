@@ -15,6 +15,23 @@ The goal is to keep the project understandable for a solo developer while preser
 - prefer Python stdlib first
 - prefer clear cross-platform behavior over clever platform-specific shortcuts
 
+## Python Version Policy
+
+- baseline development target: Python 3.13
+- supported target: Python 3.13+
+- do not pin the project to exactly Python 3.13 unless a strong reason appears later
+- do not assume the host operating system must use Python 3.13 as its system Python
+- contributors should create an explicit project environment and prefer Python 3.13 when available
+
+Recommended setup:
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+```
+
+If the host default Python is newer, that is acceptable as long as project code remains compatible and the project environment is created explicitly.
+
 ## Architecture Rules
 
 - put reusable logic under `src/codex_portable_context/core/`

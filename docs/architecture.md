@@ -93,6 +93,7 @@ Planned v2 direction:
 - preserve the product architecture
 - freeze the mirror contract first
 - move the implementation core to Python
+- use Python 3.13 as the development baseline and support Python 3.13+
 - keep `scripts/` stable until Python reaches parity
 
 See:

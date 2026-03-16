@@ -57,6 +57,22 @@ Implications:
 4. Use Python stdlib where possible.
 5. Prefer cross-platform boring choices over clever platform-specific tricks.
 
+## Python Runtime Policy
+
+Python runtime policy for v2:
+
+- baseline development target: Python 3.13
+- supported target: Python 3.13+
+- host system Python may be newer and that is acceptable
+- contributors should use an explicit project environment instead of relying on whatever host Python is first in `PATH`
+
+Implications:
+
+- v2 should be written and validated with Python 3.13 as the main baseline
+- compatibility with Python 3.14+ is desirable as long as the code remains compatible
+- the project should not assume that the host operating system must use Python 3.13 as its system Python
+- packaging and docs should express `>=3.13`, not `==3.13`
+
 ## Proposed Package Layout
 
 ```text
@@ -229,6 +245,15 @@ Minimal repo restructuring is appropriate now:
 - keep docs explicit about v1 baseline and v2 migration
 
 This makes the destination architecture concrete without starting the rewrite prematurely.
+
+Recommended contributor setup:
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+```
+
+If a host ships a newer default Python, contributors should still create an explicit project environment rather than depending on the host default implicitly.
 
 ## Validation Strategy for the Python Port
 

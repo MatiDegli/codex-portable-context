@@ -7,7 +7,7 @@ name = "codex-portable-context"
 version = "1.0.0"
 description = "Local-first, read-only Codex session mirror tooling."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = []
 
 [tool.setuptools]
