@@ -13,6 +13,18 @@ It is intentionally scoped to:
 
 It is not a claim of completed Claude Code support.
 
+## Current Status
+
+Current repo status after the first implementation pass:
+
+- a conservative `claude-code` adapter now exists in the Python core
+- discovery is intentionally limited to primary session JSONL files under `.claude/projects`
+- nested subagent logs are intentionally excluded from top-level session discovery
+- parsing is fixture-backed and intentionally conservative
+- no user-facing `--provider` CLI surface is exposed yet
+
+This keeps the integration real enough to validate internally without claiming release-ready Claude Code support.
+
 ## Evidence Basis
 
 This brief is based on:

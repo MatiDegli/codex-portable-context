@@ -152,3 +152,18 @@ Why:
 
 - this keeps the next provider adapter grounded in real observed data instead of speculation
 - it reduces the risk of overdesigning the Claude integration before fixture-backed parsing exists
+
+## 2026-03-17 - Claude Code starts with a conservative fixture-backed adapter
+
+Decision:
+
+- add the first `claude-code` adapter now
+- keep discovery limited to primary `.claude/projects/<project-key>/<session-id>.jsonl` files
+- exclude nested subagent logs from top-level session discovery for now
+- keep the first parser conservative and fixture-backed
+- do not expose a new user-facing provider switch yet
+
+Why:
+
+- this makes the Claude path concrete without overclaiming compatibility
+- it preserves one stable UX while letting the provider layer mature under tests first

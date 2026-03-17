@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from codex_portable_context.providers.base import SessionProviderAdapter
+from codex_portable_context.providers.claude_code import ClaudeCodeSessionAdapter
 from codex_portable_context.providers.codex import CodexSessionAdapter
 
 _ADAPTERS: dict[str, SessionProviderAdapter] = {
+    "claude-code": ClaudeCodeSessionAdapter(),
     "codex": CodexSessionAdapter(),
 }
 

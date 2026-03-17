@@ -129,6 +129,41 @@ def test_redact_text_redacts_json_escaped_windows_paths() -> None:
     assert result.report["rule_counts"]["home_windows_json"] == 1
 
 
+def test_export_mirror_supports_claude_code_provider(tmp_path: Path) -> None:
+    claude_home, session_path = write_fixture_claude_session(tmp_path)
+    out_dir = tmp_path / "out-claude"
+
+    result = export_mirror(
+        MirrorExportConfig(
+            codex_home=claude_home,
+            source_dir=claude_home / "projects",
+            out_dir=out_dir,
+            provider="claude-code",
+        )
+    )
+
+    session_id = "09bc645b-398f-4fc6-9889-c8120625a5b0"
+    metadata_path = out_dir / "metadata" / f"{session_id}.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    reader_path = out_dir / "reader" / f"{session_id}.html"
+    markdown_path = out_dir / "sessions" / f"{session_id}.md"
+
+    assert result.session_count == 1
+    assert metadata["provider"] == "claude-code"
+    assert metadata["provider_session_id"] == session_id
+    assert metadata["session_id"] == session_id
+    assert metadata["source"] == "claude-code"
+    assert metadata["model_provider"] == "anthropic"
+    assert metadata["summary"]["preview"].startswith("Please inspect")
+    assert metadata["reader_relpath"] == f"reader/{session_id}.html"
+    assert metadata["markdown_relpath"] == f"sessions/{session_id}.md"
+    assert markdown_path.is_file()
+    assert reader_path.is_file()
+    assert "Please inspect the project." in markdown_path.read_text(encoding="utf-8")
+    assert "I will inspect it." in markdown_path.read_text(encoding="utf-8")
+    assert session_path.resolve().as_posix() in metadata["source_file"].replace("\\", "/")
+
+
 def write_fixture_session(tmp_path: Path) -> tuple[Path, Path]:
     codex_home = tmp_path / ".codex"
     source_dir = codex_home / "sessions" / "2026" / "03" / "16"
@@ -224,3 +259,44 @@ def write_fixture_session(tmp_path: Path) -> tuple[Path, Path]:
         encoding="utf-8",
     )
     return codex_home, session_path
+
+
+def write_fixture_claude_session(tmp_path: Path) -> tuple[Path, Path]:
+    claude_home = tmp_path / ".claude"
+    project_dir = claude_home / "projects" / "sample-project"
+    project_dir.mkdir(parents=True)
+    session_path = project_dir / "09bc645b-398f-4fc6-9889-c8120625a5b0.jsonl"
+    records = [
+        {
+            "sessionId": "09bc645b-398f-4fc6-9889-c8120625a5b0",
+            "cwd": r"c:\Criticos\Proyectos\PreciseOn\btc_trading_ai",
+            "gitBranch": "main",
+            "model": "claude-opus-4-6",
+            "timestamp": "2026-03-17T12:00:00Z",
+            "type": "session",
+        },
+        {
+            "timestamp": "2026-03-17T12:00:05Z",
+            "type": "message",
+            "role": "user",
+            "message": {"content": "Please inspect the project."},
+        },
+        {
+            "timestamp": "2026-03-17T12:00:08Z",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-opus-4-6",
+            "message": {"content": "I will inspect it."},
+        },
+        {
+            "timestamp": "2026-03-17T12:00:09Z",
+            "type": "file-history-snapshot",
+            "files": ["app.py"],
+        },
+    ]
+    session_path.write_text(
+        "\n".join(json.dumps(record) for record in records)
+        + "\n",
+        encoding="utf-8",
+    )
+    return claude_home, session_path
