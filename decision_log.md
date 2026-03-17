@@ -181,3 +181,16 @@ Why:
 - the current Antigravity notes are useful but still inference-heavy
 - a directory-based provider is more fragile to over-assume than Codex or Claude Code
 - fixture-led implementation is the safer way to keep the adapter conservative and maintainable
+
+## 2026-03-17 - Local Antigravity evidence points to binary session artifacts
+
+Decision:
+
+- treat the local Antigravity `.pb` files under `conversations/` and `implicit/` as the strongest current evidence of real session storage
+- downgrade the earlier `brain/` text-log assumption to provisional research only
+- require a decoded or sanitized fixture before any adapter implementation starts
+
+Why:
+
+- local inspection found real-looking session artifacts in binary `.pb` files, not readable text logs
+- implementing against the earlier `brain/` assumption now would likely target the wrong source surface

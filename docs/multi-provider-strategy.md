@@ -300,7 +300,8 @@ Reference brief:
 Current status:
 
 - no Antigravity adapter is implemented yet
-- current planning suggests a directory-based provider layout rather than primary JSONL logs
+- current local evidence suggests real Antigravity session artifacts may be binary `.pb` files
+- earlier directory-log assumptions should now be treated as provisional only
 - the provider should remain in research mode until repo-owned fixtures exist
 
 Goals:
