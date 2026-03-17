@@ -34,6 +34,16 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     assert payload["artifacts"]["repo_branch"]
     assert payload["artifacts"]["repo_head_commit"]
     assert isinstance(payload["artifacts"]["repo_clean"], bool)
+    assert payload["open_loops"]["pending_validation"] == "none"
+    assert payload["open_loops"]["open_question"] == "none"
+    assert payload["open_loops"]["unresolved_failure"] == "none"
+    assert payload["open_loops"]["expected_next_command"] == "none"
+    expected_risk = (
+        "none"
+        if payload["artifacts"]["repo_clean"] is True
+        else "Repo has uncommitted changes."
+    )
+    assert payload["open_loops"]["operational_risk"] == expected_risk
     assert payload["recent_actions"]
     assert "ran ./scripts/validate-python-v2" in payload["recent_actions"]
     assert "updated README.md" in payload["recent_actions"]
@@ -47,6 +57,7 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     assert "## Current State" in markdown
     assert "Last substantive user request" in markdown
     assert "## Recent Actions (normalized)" in markdown
+    assert "## Open Loops / Risks" in markdown
     assert "Handoff JSON" in markdown
     assert "Recent Tool Activity (audit trail)" in markdown
 
@@ -77,6 +88,15 @@ def test_handoff_cli_prints_markdown_path_and_handles_missing_source(
     assert payload["source_availability"]["available"] is False
     assert payload["recent_window"] == []
     assert payload["recent_actions"] == []
+    assert (
+        payload["open_loops"]["pending_validation"]
+        == "Current changes have not been revalidated yet."
+    )
+    assert payload["open_loops"]["expected_next_command"] == "./scripts/validate-python-v2"
+    assert (
+        payload["open_loops"]["operational_risk"]
+        == "Only derived mirror data is available locally."
+    )
 
 
 def build_fixture_mirror(tmp_path: Path) -> Path:

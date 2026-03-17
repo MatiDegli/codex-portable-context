@@ -54,8 +54,9 @@ The Markdown handoff is intentionally layered:
 3. `Artifacts`
 4. `Operator Note Template`
 5. `Recent Actions (normalized)`
-6. `Transcript Excerpt`
-7. raw audit-trail sections
+6. `Open Loops / Risks`
+7. `Transcript Excerpt`
+8. raw audit-trail sections
 
 The top of the handoff is optimized for quick re-entry. The lower sections stay extractive and verbose on purpose for traceability.
 
@@ -73,6 +74,8 @@ The top of the handoff is optimized for quick re-entry. The lower sections stay 
 - it does not replace reading the full transcript when details matter
 
 `Current State` and `Recent Actions` are still heuristic and extractive. They are meant to improve operator speed, not to replace the full transcript when exact detail matters.
+
+`Open Loops / Risks` follows the same rule: it only surfaces conservative signals such as missing validation, obvious recent failures, open questions that are explicit in the user text, and operational risks like missing local source or a dirty repo.
 
 ## Usage
 

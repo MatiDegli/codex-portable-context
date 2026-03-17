@@ -77,6 +77,7 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
     session = _as_dict(handoff.get("session"))
     artifacts = _as_dict(handoff.get("artifacts"))
     current_state = _as_dict(handoff.get("current_state"))
+    open_loops = _as_dict(handoff.get("open_loops"))
     source = _as_dict(handoff.get("source_availability"))
     template = _as_dict(handoff.get("operator_note_template"))
     recent_actions = _as_list(handoff.get("recent_actions"))
@@ -154,6 +155,19 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         for action in recent_actions:
             lines.append(f"- {action}")
         lines.append("")
+
+    lines.extend(
+        [
+            "## Open Loops / Risks",
+            "",
+            f"- Pending validation: {open_loops.get('pending_validation') or 'none'}",
+            f"- Open question: {open_loops.get('open_question') or 'none'}",
+            f"- Unresolved failure: {open_loops.get('unresolved_failure') or 'none'}",
+            f"- Expected next command: `{open_loops.get('expected_next_command') or 'none'}`",
+            f"- Operational risk: {open_loops.get('operational_risk') or 'none'}",
+            "",
+        ]
+    )
 
     excerpt = _string(handoff.get("transcript_excerpt"))
     if excerpt:
@@ -241,6 +255,16 @@ def _build_handoff_payload(
         recent_actions=recent_actions,
     )
     repo_state = _detect_repo_state(cwd)
+    open_loops = _build_open_loops(
+        parsed=parsed,
+        current_state=current_state,
+        last_substantive_user_request=last_substantive_user_request,
+        recent_actions=recent_actions,
+        source_available=parsed is not None,
+        repo_state=repo_state,
+        redacted=redacted,
+        context=redaction_context,
+    )
     layout = mirror_layout(out_dir)
     session_id = _string(metadata.get("session_id"))
     handoff_markdown_relpath = str(layout.handoff_markdown_relpath(session_id))
@@ -293,6 +317,7 @@ def _build_handoff_payload(
             "one_line": summary.get("one_line", ""),
         },
         "current_state": current_state,
+        "open_loops": open_loops,
         "artifacts": {
             "metadata_relpath": str(metadata.get("metadata_relpath") or ""),
             "markdown_relpath": str(metadata.get("markdown_relpath") or ""),
@@ -426,6 +451,58 @@ def _build_current_state(
     }
 
 
+def _build_open_loops(
+    *,
+    parsed: ParsedSession | None,
+    current_state: dict[str, str],
+    last_substantive_user_request: str,
+    recent_actions: list[str],
+    source_available: bool,
+    repo_state: dict[str, Any],
+    redacted: bool,
+    context: RedactionContext,
+) -> dict[str, str]:
+    unresolved_failure, expected_from_failure = _latest_failure_signal(
+        parsed,
+        redacted=redacted,
+        context=context,
+    )
+    validation_ran = any(
+        action == "ran ./scripts/validate-python-v2" for action in recent_actions
+    )
+    pending_validation = (
+        "none"
+        if validation_ran or current_state.get("status") == "done"
+        else "Current changes have not been revalidated yet."
+    )
+    open_question = (
+        last_substantive_user_request
+        if last_substantive_user_request.rstrip().endswith("?")
+        else "none"
+    )
+    if unresolved_failure != "none":
+        expected_next_command = expected_from_failure or "none"
+    elif pending_validation != "none":
+        expected_next_command = "./scripts/validate-python-v2"
+    else:
+        expected_next_command = "none"
+
+    if repo_state.get("repo_clean") is False:
+        operational_risk = "Repo has uncommitted changes."
+    elif not source_available:
+        operational_risk = "Only derived mirror data is available locally."
+    else:
+        operational_risk = "none"
+
+    return {
+        "pending_validation": pending_validation,
+        "open_question": open_question,
+        "unresolved_failure": unresolved_failure,
+        "expected_next_command": expected_next_command,
+        "operational_risk": operational_risk,
+    }
+
+
 def _last_substantive_user_request(messages: list[str]) -> str:
     for message in reversed(messages):
         cleaned = _clean_user_request(message)
@@ -476,6 +553,42 @@ def _recent_actions(
     return actions
 
 
+def _latest_failure_signal(
+    parsed: ParsedSession | None,
+    *,
+    redacted: bool,
+    context: RedactionContext,
+) -> tuple[str, str]:
+    if parsed is None:
+        return ("none", "")
+
+    calls_by_id = {
+        block.call_id: block
+        for block in parsed.conversation_entries
+        if block.kind == "tool_call" and block.call_id
+    }
+
+    for block in reversed(parsed.conversation_entries[-20:]):
+        if block.kind != "tool_output":
+            continue
+        failure_text = _tool_output_failure_text(block.text)
+        if not failure_text:
+            continue
+        if redacted:
+            failure_text = redact_text(failure_text, context).text
+        command = ""
+        source_call = calls_by_id.get(block.call_id or "")
+        if source_call is not None:
+            command = _expected_command_from_tool_call(source_call.text)
+        return (_excerpt_text(failure_text, limit=180), command)
+
+    for event in reversed(parsed.notable_events[-8:]):
+        if "turn_aborted" in event.label.lower():
+            return ("Latest turn ended in an aborted state.", "none")
+
+    return ("none", "")
+
+
 def _normalized_action(
     block: RenderBlock,
     *,
@@ -518,9 +631,13 @@ def _normalized_action(
 
 
 def _updated_files_from_tool_output(text: str) -> list[str]:
+    payload = _parse_tool_call_json(text)
+    output_text = _string(payload.get("output")) if payload else ""
+    haystack = output_text or text
+
     files: list[str] = []
     capture = False
-    for raw_line in text.splitlines():
+    for raw_line in haystack.splitlines():
         line = raw_line.strip()
         if not line:
             continue
@@ -543,6 +660,25 @@ def _parse_tool_call_json(text: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _expected_command_from_tool_call(text: str) -> str:
+    payload = _parse_tool_call_json(text)
+    cmd = _string(payload.get("cmd"))
+    if not cmd:
+        return "none"
+    return _excerpt_text(cmd, limit=120)
+
+
+def _tool_output_failure_text(text: str) -> str:
+    payload = _parse_tool_call_json(text)
+    output = _string(payload.get("output")) or text
+    metadata = payload.get("metadata")
+    if isinstance(metadata, dict):
+        exit_code = metadata.get("exit_code")
+        if isinstance(exit_code, int) and exit_code != 0:
+            return output or f"Command exited with code {exit_code}."
+    return ""
 
 
 def _detect_repo_state(cwd: Path | None) -> dict[str, Any]:

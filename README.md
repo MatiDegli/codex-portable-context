@@ -424,6 +424,7 @@ The handoff now also adds a compact top layer for faster re-entry:
 - `Current State`
 - expanded `Artifacts`
 - `Recent Actions (normalized)`
+- `Open Loops / Risks`
 - raw audit-trail sections kept lower in the document
 
 For older mirror outputs, path resolution can fall back to:
