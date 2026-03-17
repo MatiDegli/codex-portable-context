@@ -6,7 +6,9 @@ Current provider status:
 
 - `codex`: primary and validated provider path
 - `claude-code`: conservative internal adapter path under fixture-backed development
-- `antigravity`: planned, not implemented yet
+- `antigravity`: policy-gated, manual-export compatibility only unless an official export/API path is confirmed
+
+Provider guardrails are documented in [docs/provider-policy-guardrails.md](docs/provider-policy-guardrails.md).
 
 ## What It Does
 

@@ -156,6 +156,7 @@ Current repo status:
 - no Antigravity fixtures exist in this repo yet
 - no user-facing provider selector should be added yet
 - Antigravity remains a research and planning target, not a supported path
+- Antigravity is policy-gated and should not be treated as an enabled live provider
 
 ## Likely Storage Shape
 
@@ -208,41 +209,47 @@ These parts should not be treated as settled yet:
 
 ## Adapter Design Recommendation
 
-Antigravity should follow the same staged pattern we used for Claude Code:
+Antigravity should not follow the same implementation path as Codex or Claude Code unless an official export, API, or policy-allowed compatibility surface exists.
+
+For now, the correct staged pattern is:
 
 1. write the brief first
-2. add fixtures second
-3. implement a conservative adapter third
-4. keep UX unchanged until the adapter is credible
+2. gather evidence second
+3. confirm an official or clearly user-exported compatibility surface third
+4. only then decide whether an adapter is appropriate at all
 
 That means:
 
 - do not start from a broad parser that tries to understand every generated file
 - do not expose provider-specific commands
-- do not expose a user-facing provider selector yet
+- do not expose a user-facing provider selector
+- do not build a live adapter over active local session state
 
 ## Minimum Useful First Pass
 
-The first Antigravity adapter should support only:
+If Antigravity support happens later, the first pass should be manual-export compatibility only.
 
-1. default path resolution
-2. deterministic discovery of the real session source area
+That first pass should support only:
+
+1. importing a user-exported or otherwise officially exposed artifact
+2. deterministic discovery of the exported source area
 3. a conservative primary session anchor selection rule
 4. basic transcript/context extraction from the most stable recoverable artifact only
 5. derived mirror generation through the existing core
 
-The first pass should explicitly avoid:
+That first pass should explicitly avoid:
 
 - merging every auxiliary file into one giant transcript
 - reconstructing every tool call/output from logs
 - turning generated artifacts into first-class conversation events too early
 - handoff/source enrichment beyond what is clearly stable
+- direct live-state parsing of opaque local provider storage
 
 ## Discovery Recommendation
 
-Because the local evidence now points at binary `.pb` artifacts, the adapter likely needs:
+Because the local evidence now points at binary `.pb` artifacts, any future compatibility layer likely needs:
 
-- `default_home_dir()` -> `~/.gemini/antigravity`
+- a manual-export or official-export input root
 - a provisional source-area decision, not just a fixed `brain/` assumption
 - `iter_session_files(source_dir)` to yield the real session anchor artifacts once the canonical location is confirmed
 
@@ -252,7 +259,7 @@ The current adapter protocol still expects `iter_session_files()` to yield `Path
 
 For Antigravity, a safe first pass may need to yield:
 
-- protobuf-backed session files
+- officially exported session files
 - or exported/decoded derivative fixtures created from them
 
 That choice must be made from real fixture evidence, not from the earlier directory-log assumption.
@@ -312,7 +319,7 @@ It should avoid:
 
 ## Fixture Requirements
 
-Before implementing the adapter, the repo should gain at least one sanitized Antigravity fixture.
+Before implementing any compatibility layer, the repo should gain at least one sanitized Antigravity fixture.
 
 Minimum fixture goal:
 
@@ -337,18 +344,19 @@ Ideal additional fixture:
 3. document the decoding or export assumption used for the fixture
 4. identify whether the app itself exposes the canonical anchor as conversation, trajectory, or another container
 5. define the primary session anchor rule
-6. implement a conservative `antigravity` adapter
-7. add provider-level tests first
-8. add one mirror export test
-9. only after that revisit whether user-facing provider selection is warranted
+6. confirm that the resulting path stays inside provider policy guardrails
+7. implement compatibility only if that surface is official or user-exported
+8. add provider-level tests first
+9. add one mirror export test
+10. only after that revisit whether user-facing provider selection is warranted
 
 ## Recommendation
 
-The next correct step is not direct implementation from the external notes.
+The next correct step is not direct implementation from the external notes or from opaque local storage.
 
 The next correct step is:
 
 - bring one real Antigravity fixture into the repo
-- determine whether that fixture comes from `conversations/*.pb`, `implicit/*.pb`, or a validated derived export surface
+- determine whether that fixture comes from an official export, a user-exported artifact, or another validated derived surface
 - answer the session-anchor question from evidence
-- then implement a conservative adapter just like the Claude Code path
+- then decide whether manual-export compatibility is appropriate at all

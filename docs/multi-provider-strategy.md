@@ -17,7 +17,7 @@ The provider roadmap is:
 1. polish Codex integration first
 2. introduce the provider abstraction layer
 3. add Claude Code compatibility
-4. add Antigravity compatibility
+4. add Antigravity compatibility only through an official export/API path or manual-export compatibility
 5. only then design experimental cross-device continuity
 
 ## Core Principle
@@ -296,6 +296,7 @@ Success means:
 Reference brief:
 
 - [Antigravity Adapter Brief](./antigravity-adapter-brief.md)
+- [Provider Policy Guardrails](./provider-policy-guardrails.md)
 
 Current status:
 
@@ -305,11 +306,12 @@ Current status:
 - current local `.pb` artifacts do not behave like straightforward protobuf messages from outside the app
 - earlier directory-log assumptions should now be treated as provisional only
 - the provider should remain in research mode until repo-owned fixtures exist
+- Antigravity is policy-gated and should not be treated as an enabled live-adapter target today
 
 Goals:
 
-- add an Antigravity adapter using the same normalized model
-- keep the provider-specific complexity contained inside the adapter
+- support only manual-export/import compatibility unless an official export/API/policy path is confirmed
+- keep any eventual provider-specific complexity contained inside the adapter
 - avoid binding the adapter to opaque storage until a validated decode or export path exists
 
 Likely easier:
@@ -321,6 +323,7 @@ Likely harder:
 
 - identifying the canonical session anchor among conversation, trajectory, or other container concepts
 - obtaining a stable decode or export path for `.pb`-backed local artifacts
+- staying within provider policy boundaries for any future compatibility work
 - mapping tool or system events into the existing normalized event vocabulary
 - deciding how much provider-native nuance should be preserved in normalized summaries
 - determining whether handoff enrichment can stay as rich as Codex/Claude

@@ -208,3 +208,17 @@ Why:
 - the installed application bundle explicitly depends on protobuf tooling and embeds trajectory-oriented protobuf models
 - the local `.pb` artifacts do not behave like straightforward protobuf messages under lightweight inspection
 - building an adapter before the decode or export path is understood would create a fragile provider-specific fork
+
+## 2026-03-17 - Antigravity is policy-gated, not an enabled live provider
+
+Decision:
+
+- treat Antigravity as policy-gated rather than as an enabled provider path
+- do not build a live Antigravity adapter over active local session state
+- if Antigravity support happens later, start from manual exports or another official provider-approved surface
+
+Why:
+
+- current product direction is based on read-only local compatibility, not on unofficial service access
+- provider policy risk is materially higher for Antigravity than for Codex or Claude Code
+- this keeps the roadmap conservative, durable, and aligned with the repo's local-first guardrails
