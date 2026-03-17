@@ -276,7 +276,7 @@ def _build_handoff_payload(
     last_substantive_user_request = (
         _last_substantive_user_request(parsed.user_messages)
         if parsed
-        else _string(summary.get("last_user_message"))
+        else _summary_substantive_user_request(summary)
     )
     recent_actions = (
         _recent_actions(parsed.conversation_entries, redacted=redacted, context=redaction_context)
@@ -463,7 +463,7 @@ def _build_current_state(
     if parsed and parsed.notable_events:
         latest_event = parsed.notable_events[-1]
         lowered = latest_event.label.lower()
-        if "turn_aborted" in lowered:
+        if _has_unresolved_aborted_turn(parsed):
             status = "blocked"
         elif "task_complete" in lowered or "item_completed" in lowered:
             status = "done"
@@ -580,11 +580,47 @@ def _last_substantive_user_request(messages: list[str]) -> str:
     return ""
 
 
+def _summary_substantive_user_request(summary: dict[str, Any]) -> str:
+    for candidate in (
+        _string(summary.get("last_user_message")),
+        _string(summary.get("first_user_message")),
+        _string(summary.get("preview")),
+    ):
+        cleaned = _clean_user_request(candidate)
+        if cleaned and not _is_trivial_request(cleaned):
+            return cleaned
+    return ""
+
+
 def _clean_user_request(message: str) -> str:
     text = message.strip()
-    marker = "## My request for Codex:"
-    if marker in text:
-        text = text.split(marker, 1)[1].strip()
+    marker_match = re.search(r"#{0,6}\s*My request for Codex:\s*", text)
+    if marker_match:
+        text = text[marker_match.end() :].strip()
+    else:
+        filtered_lines: list[str] = []
+        skip_open_tabs = False
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            lowered = line.lower()
+            if lowered.startswith("# context from my ide setup"):
+                continue
+            if lowered.startswith("## active file:"):
+                continue
+            if lowered.startswith("## open tabs:"):
+                skip_open_tabs = True
+                continue
+            if skip_open_tabs:
+                if line.startswith("-"):
+                    continue
+                if line.startswith("#"):
+                    skip_open_tabs = False
+                else:
+                    continue
+            filtered_lines.append(raw_line)
+        text = "\n".join(filtered_lines).strip()
     return _excerpt_text(" ".join(text.split()), limit=220)
 
 
@@ -661,11 +697,36 @@ def _latest_failure_signal(
             command = _expected_command_from_tool_call(source_call.text)
         return (_excerpt_text(failure_text, limit=180), command)
 
-    for event in reversed(parsed.notable_events[-8:]):
-        if "turn_aborted" in event.label.lower():
-            return ("Latest turn ended in an aborted state.", "none")
+    if _has_unresolved_aborted_turn(parsed):
+        return ("Latest turn ended in an aborted state.", "none")
 
     return ("none", "")
+
+
+def _has_unresolved_aborted_turn(parsed: ParsedSession) -> bool:
+    aborted_timestamp = ""
+    for event in reversed(parsed.notable_events):
+        if "turn_aborted" in event.label.lower():
+            aborted_timestamp = event.timestamp or ""
+            break
+
+    if not aborted_timestamp:
+        return False
+
+    for event in parsed.notable_events:
+        if (event.timestamp or "") <= aborted_timestamp:
+            continue
+        lowered = event.label.lower()
+        if "task_complete" in lowered or "item_completed" in lowered:
+            return False
+
+    for block in parsed.conversation_entries:
+        if (block.timestamp or "") <= aborted_timestamp:
+            continue
+        if block.kind in {"assistant", "tool_call", "tool_output"}:
+            return False
+
+    return True
 
 
 def _normalized_action(

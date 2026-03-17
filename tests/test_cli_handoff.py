@@ -21,12 +21,12 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     assert payload["source_availability"]["available"] is True
     assert (
         payload["session"]["last_substantive_user_request"]
-        == "Please inspect Second Fixture Session."
+        == "Why is the IDE output empty?"
     )
     assert payload["current_state"]["status"] == "in_progress"
     assert (
         payload["current_state"]["current_focus"]
-        == "Please inspect Second Fixture Session."
+        == "Why is the IDE output empty?"
     )
     assert (
         payload["current_state"]["next_recommended_action"]
@@ -55,7 +55,7 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     assert payload["artifacts"]["repo_head_commit"]
     assert isinstance(payload["artifacts"]["repo_clean"], bool)
     assert payload["open_loops"]["pending_validation"] == "none"
-    assert payload["open_loops"]["open_question"] == "none"
+    assert payload["open_loops"]["open_question"] == "Why is the IDE output empty?"
     assert payload["open_loops"]["unresolved_failure"] == "none"
     assert payload["open_loops"]["expected_next_command"] == "none"
     expected_risk = (
@@ -108,6 +108,7 @@ def test_handoff_cli_prints_markdown_path_and_handles_missing_source(
 
     payload = json.loads((out_dir / "handoffs" / "session-1234.json").read_text(encoding="utf-8"))
     assert payload["source_availability"]["available"] is False
+    assert payload["session"]["last_substantive_user_request"] == "Please inspect Fixture Session."
     assert payload["recent_window"] == []
     assert payload["recent_actions"] == []
     assert (
@@ -119,6 +120,35 @@ def test_handoff_cli_prints_markdown_path_and_handles_missing_source(
         payload["open_loops"]["operational_risk"]
         == "Only derived mirror data is available locally."
     )
+
+
+def test_handoff_cli_cleans_ide_wrapper_request_when_source_missing(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+    source_file = (
+        tmp_path
+        / ".codex"
+        / "sessions"
+        / "2026"
+        / "03"
+        / "16"
+        / "rollout-2026-03-16T10-05-00-fixture-session-b.jsonl"
+    )
+    source_file.unlink()
+
+    exit_code = main(["--out-dir", str(out_dir), "session-5678"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Handoff bundle written:" in captured.out
+
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    assert payload["source_availability"]["available"] is False
+    assert payload["session"]["last_substantive_user_request"] == "Why is the IDE output empty?"
+    assert payload["current_state"]["current_focus"] == "Why is the IDE output empty?"
+    assert "# Context from my IDE setup" not in payload["session"]["last_substantive_user_request"]
 
 
 def build_fixture_mirror(tmp_path: Path) -> Path:
@@ -138,6 +168,8 @@ def build_fixture_mirror(tmp_path: Path) -> Path:
         updated_at="2026-03-16T10:05:06Z",
         thread_name="Second Fixture Session",
         cwd=str(repo_root()),
+        wrapped_request="Why is the IDE output empty?",
+        include_turn_aborted=True,
     )
 
     (codex_home / "session_index.jsonl").write_text(
@@ -181,6 +213,8 @@ def write_session(
     updated_at: str,
     thread_name: str,
     cwd: str = "/home/tester/project",
+    wrapped_request: str = "Proceed",
+    include_turn_aborted: bool = False,
 ) -> None:
     records = [
         {
@@ -226,10 +260,26 @@ def write_session(
                 "message": (
                     "# Context from my IDE setup:\n\n"
                     "## Active file: README.md\n\n"
-                    "## My request for Codex:\nProceed"
+                    "## Open tabs:\n"
+                    "- README.md: README.md\n\n"
+                    f"## My request for Codex:\n{wrapped_request}"
                 ),
             },
         },
+        *(
+            [
+                {
+                    "timestamp": "2026-03-16T10:05:02Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "turn_aborted",
+                        "reason": "fixture interruption",
+                    },
+                }
+            ]
+            if include_turn_aborted
+            else []
+        ),
         {
             "timestamp": updated_at,
             "type": "event_msg",
