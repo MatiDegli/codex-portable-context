@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from codex_portable_context.core.discovery import iter_session_files
 from codex_portable_context.core.parsing import (
     JsonObject,
     ParsedSession,
@@ -21,8 +21,21 @@ class CodexSessionAdapter:
 
     provider_id = "codex"
 
+    def default_home_dir(self) -> Path:
+        raw_path = os.environ.get("CODEX_HOME")
+        if raw_path:
+            return Path(raw_path).expanduser()
+        return Path.home() / ".codex"
+
+    def default_source_dir(self, home_dir: Path) -> Path:
+        return home_dir / "sessions"
+
     def iter_session_files(self, source_dir: Path) -> Iterator[Path]:
-        return iter_session_files(source_dir)
+        yield from sorted(
+            path
+            for path in source_dir.rglob("rollout-*.jsonl")
+            if path.is_file()
+        )
 
     def load_source_index(self, home_dir: Path) -> dict[str, JsonObject]:
         return load_source_session_index(home_dir)

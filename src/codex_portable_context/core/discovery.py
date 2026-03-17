@@ -2,27 +2,26 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterator
 from pathlib import Path
 
+from codex_portable_context.providers import get_provider_adapter
+
 from .contract import MirrorLayout
+from .source_paths import source_relpath as _source_relpath
 
 
 def default_codex_home() -> Path:
     """Return the default local Codex home directory."""
 
-    raw_path = os.environ.get("CODEX_HOME")
-    if raw_path:
-        return Path(raw_path).expanduser()
-    return Path.home() / ".codex"
+    return get_provider_adapter("codex").default_home_dir()
 
 
 def default_source_dir(codex_home: Path | None = None) -> Path:
     """Return the default Codex session source directory."""
 
     root = codex_home or default_codex_home()
-    return root / "sessions"
+    return get_provider_adapter("codex").default_source_dir(root)
 
 
 def repo_root(start: Path | None = None) -> Path:
@@ -67,4 +66,4 @@ def iter_session_files(source_dir: Path) -> Iterator[Path]:
 def source_relpath(file_path: Path, source_dir: Path) -> str:
     """Return a source-relative path string for one session file."""
 
-    return file_path.resolve().relative_to(source_dir.resolve()).as_posix()
+    return _source_relpath(file_path, source_dir)

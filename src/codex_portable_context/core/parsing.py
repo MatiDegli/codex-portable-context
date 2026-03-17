@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .discovery import source_relpath
+from .source_paths import source_relpath
 
 JsonObject = dict[str, Any]
 

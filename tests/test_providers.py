@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from codex_portable_context.core.parsing import ParsedSession
 from codex_portable_context.providers import get_provider_adapter, registered_provider_ids
 
@@ -12,6 +14,19 @@ def test_provider_registry_exposes_codex_adapter() -> None:
     assert "codex" in registered_provider_ids()
     assert capabilities.supports_tools is True
     assert capabilities.supports_handoff_source_enrichment is True
+
+
+def test_codex_adapter_resolves_default_home_and_source_dirs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter = get_provider_adapter("codex")
+    monkeypatch.setenv("CODEX_HOME", "~/custom-codex-home")
+
+    home_dir = adapter.default_home_dir()
+    source_dir = adapter.default_source_dir(home_dir)
+
+    assert home_dir == Path("~/custom-codex-home").expanduser()
+    assert source_dir == home_dir / "sessions"
 
 
 def test_codex_adapter_filters_rollout_session_files(tmp_path: Path) -> None:

@@ -6,12 +6,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from codex_portable_context.core.discovery import (
-    default_codex_home,
-    default_out_dir,
-    default_source_dir,
-)
+from codex_portable_context.core.discovery import default_out_dir
 from codex_portable_context.core.mirror import MirrorExportConfig, export_mirror
+from codex_portable_context.providers import get_provider_adapter
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -76,9 +73,10 @@ def main(argv: list[str] | None = None) -> int:
     """Run the Phase 3 Python mirror exporter."""
 
     args = build_parser().parse_args(argv)
+    provider = get_provider_adapter("codex")
 
-    codex_home = (args.codex_home or default_codex_home()).expanduser().resolve()
-    source_dir = (args.source_dir or default_source_dir(codex_home)).expanduser().resolve()
+    codex_home = (args.codex_home or provider.default_home_dir()).expanduser().resolve()
+    source_dir = (args.source_dir or provider.default_source_dir(codex_home)).expanduser().resolve()
     if args.out_dir:
         out_dir = args.out_dir.expanduser().resolve()
     elif args.redact:
@@ -99,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
             codex_home=codex_home,
             source_dir=source_dir,
             out_dir=out_dir,
+            provider=provider.provider_id,
             redact=args.redact,
             include_context=include_context,
             include_tools=include_tools,

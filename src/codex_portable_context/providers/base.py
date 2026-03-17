@@ -5,9 +5,12 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
-from codex_portable_context.core.parsing import JsonObject, ParsedSession
+if TYPE_CHECKING:
+    from codex_portable_context.core.parsing import ParsedSession
+
+JsonObject = dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +37,12 @@ class SessionProviderAdapter(Protocol):
     """Minimal provider adapter contract for source discovery and parsing."""
 
     provider_id: str
+
+    def default_home_dir(self) -> Path:
+        """Return the default provider home directory."""
+
+    def default_source_dir(self, home_dir: Path) -> Path:
+        """Return the default source directory for one provider home."""
 
     def iter_session_files(self, source_dir: Path) -> Iterator[Path]:
         """Yield raw provider session files in deterministic order."""
