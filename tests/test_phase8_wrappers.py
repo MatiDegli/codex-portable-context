@@ -2,6 +2,7 @@ import json
 import shutil
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 
@@ -149,10 +150,12 @@ def build_local_mirror(tmp_path: Path) -> Path:
 
 
 def installed_command(name: str) -> str:
-    scripts_dir = Path(sys.executable).resolve().parent
+    scripts_dir = Path(sysconfig.get_path("scripts") or Path(sys.executable).parent)
     command = shutil.which(name, path=str(scripts_dir))
     if command is None:
-        raise FileNotFoundError(f"Installed entrypoint not found: {name}")
+        raise FileNotFoundError(
+            f"Installed entrypoint not found: {name} under {scripts_dir}"
+        )
     return command
 
 
