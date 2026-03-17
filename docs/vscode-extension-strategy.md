@@ -202,6 +202,8 @@ These are small ergonomics gaps worth tracking before or during extension work:
 
 These are intentionally small. None of them justify moving logic out of Python.
 
+The first of these is now captured in [list-json-contract.md](list-json-contract.md).
+
 ## Cross-Platform Invocation Strategy
 
 The extension should try Python-first invocation in this order:

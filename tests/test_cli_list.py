@@ -18,6 +18,33 @@ def test_list_cli_json_and_filtering(tmp_path: Path, capsys) -> None:
     assert payload[0]["session_id"] == "session-1234"
 
 
+def test_list_cli_json_exposes_stable_integration_fields(tmp_path: Path, capsys) -> None:
+    out_dir = build_fixture_mirror(tmp_path, redact=True)
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest", "--json"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert len(payload) == 1
+
+    item = payload[0]
+    assert item["session_id"] == "session-1234"
+    assert item["title"] == "Fixture Session"
+    assert item["markdown_relpath"] == "sessions/session-1234.md"
+    assert item["metadata_relpath"] == "metadata/session-1234.json"
+    assert item["reader_relpath"] == "reader/session-1234.html"
+    assert item["redacted"] is True
+    assert isinstance(item["summary"], dict)
+    assert isinstance(item["redaction_report"], dict)
+    assert isinstance(item["summary_line"], str)
+    assert isinstance(item["detail_line"], str)
+    assert isinstance(item["activity_line"], str)
+    assert isinstance(item["environment_line"], str)
+    assert isinstance(item["redaction_line"], str)
+
+
 def test_list_cli_human_output_with_details_and_redaction(tmp_path: Path, capsys) -> None:
     out_dir = build_fixture_mirror(tmp_path, redact=True)
 

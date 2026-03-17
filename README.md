@@ -251,6 +251,8 @@ That means:
 
 See [docs/vscode-extension-strategy.md](docs/vscode-extension-strategy.md).
 
+For machine-readable session selection, see the small integration contract for [`codex-session-list --json`](docs/list-json-contract.md).
+
 ## Bootstrap and Validation
 
 Canonical bootstrap path:
