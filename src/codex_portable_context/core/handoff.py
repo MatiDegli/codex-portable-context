@@ -78,6 +78,7 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
 
     session = _as_dict(handoff.get("session"))
     artifacts = _as_dict(handoff.get("artifacts"))
+    continuity_entry = _as_dict(handoff.get("continuity_entry"))
     current_state = _as_dict(handoff.get("current_state"))
     open_loops = _as_dict(handoff.get("open_loops"))
     source = _as_dict(handoff.get("source_availability"))
@@ -90,6 +91,24 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
     metadata_link = _handoff_relpath(_string(artifacts.get("metadata_relpath")))
     reader_link = _handoff_relpath(_string(artifacts.get("reader_relpath")))
     handoff_json_link = _handoff_sibling_relpath(_string(artifacts.get("handoff_json_relpath")))
+    primary_label = _string(
+        continuity_entry.get("primary_artifact_relpath")
+    ) or _string(artifacts.get("handoff_markdown_relpath"))
+    transcript_fallback_label = _string(
+        continuity_entry.get("transcript_fallback_relpath")
+    ) or _string(artifacts.get("markdown_relpath"))
+    reader_fallback_label = _string(
+        continuity_entry.get("reader_fallback_relpath")
+    ) or _string(artifacts.get("reader_relpath"))
+    primary_link = _handoff_sibling_relpath(
+        _string(continuity_entry.get("primary_artifact_relpath"))
+    )
+    transcript_fallback_link = _handoff_relpath(
+        _string(continuity_entry.get("transcript_fallback_relpath"))
+    )
+    reader_fallback_link = _handoff_relpath(
+        _string(continuity_entry.get("reader_fallback_relpath"))
+    )
     updated_at = pretty_timestamp(
         _string(handoff.get("updated_at")) or _string(handoff.get("session_timestamp"))
     )
@@ -132,6 +151,13 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         f"- Next recommended action: {current_state.get('next_recommended_action') or 'n/a'}",
         f"- Known blocker: {current_state.get('known_blocker') or 'none'}",
         "",
+        "## Continuity Entry",
+        "",
+        f"- Start here: [{primary_label}]({primary_link})",
+        f"- Machine-readable state: [{artifacts.get('handoff_json_relpath')}]({handoff_json_link})",
+        f"- Transcript fallback: [{transcript_fallback_label}]({transcript_fallback_link})",
+        f"- Reader fallback: [{reader_fallback_label}]({reader_fallback_link})",
+        "",
         "## Artifacts",
         "",
         f"- Transcript: [{artifacts.get('markdown_relpath')}]({transcript_link})",
@@ -156,6 +182,13 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         lines.extend(["## Recent Actions (normalized)", ""])
         for action in recent_actions:
             lines.append(f"- {action}")
+        lines.append("")
+
+    workflow = _as_list(continuity_entry.get("destination_workflow"))
+    if workflow:
+        lines.extend(["### Destination Workflow", ""])
+        for step in workflow:
+            lines.append(f"- {step}")
         lines.append("")
 
     lines.extend(
@@ -271,6 +304,12 @@ def _build_handoff_payload(
     session_id = _string(metadata.get("session_id"))
     handoff_markdown_relpath = str(layout.handoff_markdown_relpath(session_id))
     handoff_json_relpath = str(layout.handoff_json_relpath(session_id))
+    continuity_entry = _build_continuity_entry(
+        metadata=metadata,
+        handoff_markdown_relpath=handoff_markdown_relpath,
+        handoff_json_relpath=handoff_json_relpath,
+        reader_relpath=reader_relpath,
+    )
 
     recent_window = (
         [
@@ -321,6 +360,7 @@ def _build_handoff_payload(
             "one_line": summary.get("one_line", ""),
         },
         "current_state": current_state,
+        "continuity_entry": continuity_entry,
         "open_loops": open_loops,
         "artifacts": {
             "metadata_relpath": str(metadata.get("metadata_relpath") or ""),
@@ -428,7 +468,9 @@ def _build_current_state(
         elif "task_complete" in lowered or "item_completed" in lowered:
             status = "done"
 
-    current_focus = last_substantive_user_request or _string(summary.get("preview"))
+    current_focus = _current_focus_text(
+        last_substantive_user_request or _string(summary.get("preview"))
+    )
     last_meaningful_outcome = recent_actions[0] if recent_actions else _string(
         summary.get("last_assistant_message")
     )
@@ -443,8 +485,8 @@ def _build_current_state(
         blocker = "none"
     else:
         next_action = (
-            "Continue from the current focus using the latest handoff "
-            "and transcript context."
+            "Start a fresh local session and continue from this handoff's Current "
+            "State and Open Loops."
         )
         blocker = "none"
 
@@ -454,6 +496,27 @@ def _build_current_state(
         "last_meaningful_outcome": last_meaningful_outcome,
         "next_recommended_action": next_action,
         "known_blocker": blocker,
+    }
+
+
+def _build_continuity_entry(
+    *,
+    metadata: dict[str, Any],
+    handoff_markdown_relpath: str,
+    handoff_json_relpath: str,
+    reader_relpath: str,
+) -> dict[str, Any]:
+    return {
+        "primary_artifact_relpath": handoff_markdown_relpath,
+        "machine_artifact_relpath": handoff_json_relpath,
+        "transcript_fallback_relpath": str(metadata.get("markdown_relpath") or ""),
+        "reader_fallback_relpath": reader_relpath,
+        "destination_workflow": [
+            "Read Current State, Recent Actions, and Open Loops first.",
+            "Open the transcript only if more detail is needed.",
+            "Start a fresh local provider session on the destination machine.",
+            "Continue from derived context only; do not sync live provider state.",
+        ],
     }
 
 
@@ -523,6 +586,16 @@ def _clean_user_request(message: str) -> str:
     if marker in text:
         text = text.split(marker, 1)[1].strip()
     return _excerpt_text(" ".join(text.split()), limit=220)
+
+
+def _current_focus_text(text: str) -> str:
+    normalized = " ".join(text.strip().split())
+    if not normalized:
+        return ""
+
+    first_sentence = re.split(r"(?<=[.!?])\s+", normalized, maxsplit=1)[0].strip()
+    candidate = first_sentence or normalized
+    return _excerpt_text(candidate, limit=140)
 
 
 def _is_trivial_request(text: str) -> bool:
@@ -647,7 +720,10 @@ def _updated_files_from_tool_output(text: str) -> list[str]:
         line = raw_line.strip()
         if not line:
             continue
-        if "Updated the following files:" in line:
+        if line in {
+            "Updated the following files:",
+            "Success. Updated the following files:",
+        }:
             capture = True
             continue
         if not capture:
@@ -655,9 +731,16 @@ def _updated_files_from_tool_output(text: str) -> list[str]:
         if line.startswith("{") or line.startswith('"metadata"'):
             break
         normalized = re.sub(r"^[A-Z?]+\s+", "", line)
-        if normalized:
+        if normalized and _looks_like_changed_path(normalized):
             files.append(Path(normalized).name or normalized)
     return files
+
+
+def _looks_like_changed_path(text: str) -> bool:
+    if text.startswith("/") or text.startswith("./"):
+        return True
+    path = Path(text)
+    return len(path.parts) > 1 or "." in path.name
 
 
 def _parse_tool_call_json(text: str) -> dict[str, Any]:

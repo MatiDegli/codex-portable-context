@@ -51,12 +51,13 @@ The Markdown handoff is intentionally layered:
 
 1. `Snapshot`
 2. `Current State`
-3. `Artifacts`
-4. `Operator Note Template`
-5. `Recent Actions (normalized)`
-6. `Open Loops / Risks`
-7. `Transcript Excerpt`
-8. raw audit-trail sections
+3. `Continuity Entry`
+4. `Artifacts`
+5. `Operator Note Template`
+6. `Recent Actions (normalized)`
+7. `Open Loops / Risks`
+8. `Transcript Excerpt`
+9. raw audit-trail sections
 
 The top of the handoff is optimized for quick re-entry. The lower sections stay extractive and verbose on purpose for traceability.
 

@@ -28,6 +28,26 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
         payload["current_state"]["current_focus"]
         == "Please inspect Second Fixture Session."
     )
+    assert (
+        payload["current_state"]["next_recommended_action"]
+        == (
+            "Start a fresh local session and continue from this handoff's "
+            "Current State and Open Loops."
+        )
+    )
+    assert (
+        payload["continuity_entry"]["primary_artifact_relpath"]
+        == "handoffs/session-5678.md"
+    )
+    assert (
+        payload["continuity_entry"]["machine_artifact_relpath"]
+        == "handoffs/session-5678.json"
+    )
+    assert (
+        payload["continuity_entry"]["transcript_fallback_relpath"]
+        == "sessions/session-5678.md"
+    )
+    assert payload["continuity_entry"]["destination_workflow"]
     assert payload["artifacts"]["handoff_markdown_relpath"] == "handoffs/session-5678.md"
     assert payload["artifacts"]["handoff_json_relpath"] == "handoffs/session-5678.json"
     assert payload["artifacts"]["repo_root"] == str(repo_root())
@@ -55,8 +75,10 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
 
     markdown = (out_dir / "handoffs" / "session-5678.md").read_text(encoding="utf-8")
     assert "## Current State" in markdown
+    assert "## Continuity Entry" in markdown
     assert "Last substantive user request" in markdown
     assert "## Recent Actions (normalized)" in markdown
+    assert "### Destination Workflow" in markdown
     assert "## Open Loops / Risks" in markdown
     assert "Handoff JSON" in markdown
     assert "Recent Tool Activity (audit trail)" in markdown
