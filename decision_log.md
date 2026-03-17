@@ -139,3 +139,16 @@ Why:
 
 - this begins the provider abstraction with low risk and low churn
 - future providers can build on the same derived artifact model instead of forking the product surface
+
+## 2026-03-17 - Claude Code planning should stay evidence-led
+
+Decision:
+
+- plan the Claude Code adapter from confirmed storage and transcript findings first
+- treat Windows `.claude/projects` findings as valid discovery evidence
+- keep Linux/macOS assumptions and subagent handling provisional until validated
+
+Why:
+
+- this keeps the next provider adapter grounded in real observed data instead of speculation
+- it reduces the risk of overdesigning the Claude integration before fixture-backed parsing exists

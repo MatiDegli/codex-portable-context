@@ -258,6 +258,10 @@ Expected outcome:
 
 ### Phase 3: Add Claude Code Compatibility
 
+Reference brief:
+
+- [Claude Code Adapter Brief](./claude-code-adapter-brief.md)
+
 Goals:
 
 - add a Claude Code adapter against the normalized model
