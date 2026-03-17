@@ -22,6 +22,8 @@ Current repo status after the first implementation pass:
 - nested subagent logs are intentionally excluded from top-level session discovery
 - parsing is fixture-backed and intentionally conservative
 - no user-facing `--provider` CLI surface is exposed yet
+- shared mirror generation already accepts `provider="claude-code"` internally
+- current coverage includes provider-level fixtures and derived mirror export tests
 
 This keeps the integration real enough to validate internally without claiming release-ready Claude Code support.
 

@@ -61,6 +61,12 @@ Invariants:
 - index entries and metadata entries for the same session should carry the same `session_id`
 - transcript filenames and metadata filenames should remain derived from `session_id`
 
+Provider note:
+
+- the mirror layout remains provider-agnostic even when multiple providers exist
+- provider-specific identity should stay inside stable metadata fields such as `provider` and `provider_session_id`
+- adding a new provider must not fork the mirror tree structure
+
 ## sessions-index.jsonl
 
 Role:

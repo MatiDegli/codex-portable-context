@@ -262,6 +262,13 @@ Reference brief:
 
 - [Claude Code Adapter Brief](./claude-code-adapter-brief.md)
 
+Current status:
+
+- a conservative internal `claude-code` adapter now exists in the Python core
+- it is fixture-backed, not release-validated
+- it currently supports primary session discovery plus conservative transcript normalization
+- it intentionally does not expose a user-facing provider selector yet
+
 Goals:
 
 - add a Claude Code adapter against the normalized model

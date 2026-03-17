@@ -2,6 +2,12 @@
 
 `codex-portable-context` turns local Codex session data into a derived, read-only mirror that is easier to browse, move, and review across devices. It is built for safe context portability, not for syncing live `~/.codex` state or writing anything back into Codex.
 
+Current provider status:
+
+- `codex`: primary and validated provider path
+- `claude-code`: conservative internal adapter path under fixture-backed development
+- `antigravity`: planned, not implemented yet
+
 ## What It Does
 
 - reads local session logs from `~/.codex/sessions`
@@ -258,6 +264,8 @@ An initial thin extension skeleton also lives under [`extensions/vscode-codex-po
 The planned multi-provider direction is: Codex first, provider abstraction next, Claude Code next, Antigravity next, and only later experimental continuity on top of normalized artifacts. See [docs/multi-provider-strategy.md](docs/multi-provider-strategy.md).
 
 The first internal step of that direction is now in place: Codex is being treated as the first provider adapter behind the Python core, without changing the current CLI UX.
+
+Claude Code now also has a conservative internal adapter path behind the same core, but it remains intentionally fixture-backed and does not yet imply release-ready Claude Code support. See [docs/claude-code-adapter-brief.md](docs/claude-code-adapter-brief.md).
 
 ## Bootstrap and Validation
 
