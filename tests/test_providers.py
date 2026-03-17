@@ -221,3 +221,76 @@ def test_claude_code_adapter_parses_conservative_session_fixture(tmp_path: Path)
     assert descriptor.provider == "claude-code"
     assert descriptor.session_id == "09bc645b-398f-4fc6-9889-c8120625a5b0"
     assert descriptor.updated_at == "2026-03-17T12:00:09Z"
+
+
+def test_claude_code_adapter_preserves_system_and_developer_context(tmp_path: Path) -> None:
+    adapter = get_provider_adapter("claude-code")
+    projects_dir = tmp_path / "projects"
+    session_dir = projects_dir / "sample-project"
+    session_dir.mkdir(parents=True)
+    session_file = session_dir / "session-with-context.jsonl"
+    records = [
+        {
+            "sessionId": "session-with-context",
+            "timestamp": "2026-03-17T12:00:00Z",
+            "type": "system",
+            "content": [{"text": "System guidance."}],
+        },
+        {
+            "timestamp": "2026-03-17T12:00:02Z",
+            "type": "developer",
+            "content": [{"text": "Developer guidance."}],
+        },
+        {
+            "timestamp": "2026-03-17T12:00:05Z",
+            "type": "user",
+            "content": [{"text": "User request."}],
+        },
+        {
+            "timestamp": "2026-03-17T12:00:06Z",
+            "type": "assistant",
+            "content": [{"text": "Assistant reply."}],
+        },
+    ]
+    session_file.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n",
+        encoding="utf-8",
+    )
+
+    parsed = adapter.parse_session_file(session_file, projects_dir)
+
+    assert parsed.context_entry_count == 2
+    assert [entry.role for entry in parsed.context_entries] == ["system", "developer"]
+    assert [entry.text for entry in parsed.context_entries] == [
+        "System guidance.",
+        "Developer guidance.",
+    ]
+    assert parsed.user_messages == ["User request."]
+    assert parsed.assistant_messages == ["Assistant reply."]
+
+
+def test_claude_code_adapter_falls_back_to_filename_and_file_timestamp(
+    tmp_path: Path,
+) -> None:
+    adapter = get_provider_adapter("claude-code")
+    projects_dir = tmp_path / "projects"
+    session_dir = projects_dir / "sample-project"
+    session_dir.mkdir(parents=True)
+    session_file = session_dir / "fallback-session.jsonl"
+    session_file.write_text(
+        json.dumps({"type": "message", "role": "user", "message": {"content": "Hello"}}) + "\n",
+        encoding="utf-8",
+    )
+
+    parsed = adapter.parse_session_file(session_file, projects_dir)
+    descriptor = adapter.describe_session(
+        parsed=parsed,
+        source_context=ProviderSourceContext(),
+        session_file=session_file,
+    )
+
+    assert parsed.session_id == "fallback-session"
+    assert parsed.provider_session_id == "fallback-session"
+    assert parsed.session_timestamp is None
+    assert descriptor.session_id == "fallback-session"
+    assert descriptor.updated_at is not None
