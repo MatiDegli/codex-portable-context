@@ -293,6 +293,16 @@ Success means:
 
 ### Phase 4: Add Antigravity Compatibility
 
+Reference brief:
+
+- [Antigravity Adapter Brief](./antigravity-adapter-brief.md)
+
+Current status:
+
+- no Antigravity adapter is implemented yet
+- current planning suggests a directory-based provider layout rather than primary JSONL logs
+- the provider should remain in research mode until repo-owned fixtures exist
+
 Goals:
 
 - add an Antigravity adapter using the same normalized model

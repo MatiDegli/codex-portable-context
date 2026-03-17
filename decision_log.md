@@ -167,3 +167,17 @@ Why:
 
 - this makes the Claude path concrete without overclaiming compatibility
 - it preserves one stable UX while letting the provider layer mature under tests first
+
+## 2026-03-17 - Antigravity should start from fixtures, not inferred logs
+
+Decision:
+
+- treat the external Antigravity notes as research input only
+- do not implement the Antigravity adapter directly from those notes
+- require repo-owned sanitized fixtures before choosing the primary session anchor or exposing any provider surface
+
+Why:
+
+- the current Antigravity notes are useful but still inference-heavy
+- a directory-based provider is more fragile to over-assume than Codex or Claude Code
+- fixture-led implementation is the safer way to keep the adapter conservative and maintainable
