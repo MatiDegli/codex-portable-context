@@ -12,6 +12,8 @@ Its goal is to keep continuity work aligned with:
 - official product guidance from OpenAI Codex and Claude Code
 - the repo's provider policy guardrails
 
+An implementation-oriented follow-up lives in [experimental-cross-device-continuity-checklist.md](./experimental-cross-device-continuity-checklist.md).
+
 ## Short Answer
 
 Experimental cross-device continuity is acceptable only when it is built on normalized derived artifacts.
