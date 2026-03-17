@@ -301,6 +301,8 @@ Current status:
 
 - no Antigravity adapter is implemented yet
 - current local evidence suggests real Antigravity session artifacts may be binary `.pb` files
+- installed-app inspection confirms protobuf-backed conversation and trajectory concepts inside Antigravity
+- current local `.pb` artifacts do not behave like straightforward protobuf messages from outside the app
 - earlier directory-log assumptions should now be treated as provisional only
 - the provider should remain in research mode until repo-owned fixtures exist
 
@@ -308,14 +310,17 @@ Goals:
 
 - add an Antigravity adapter using the same normalized model
 - keep the provider-specific complexity contained inside the adapter
+- avoid binding the adapter to opaque storage until a validated decode or export path exists
 
 Likely easier:
 
 - metadata extraction if timestamps/session labels are explicit
-- basic transcript normalization
+- basic transcript normalization once a decoded or exported source is available
 
 Likely harder:
 
+- identifying the canonical session anchor among conversation, trajectory, or other container concepts
+- obtaining a stable decode or export path for `.pb`-backed local artifacts
 - mapping tool or system events into the existing normalized event vocabulary
 - deciding how much provider-native nuance should be preserved in normalized summaries
 - determining whether handoff enrichment can stay as rich as Codex/Claude

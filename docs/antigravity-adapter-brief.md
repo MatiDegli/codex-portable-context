@@ -20,6 +20,7 @@ This brief is based on:
 - the current provider adapter architecture in this repo
 - the Antigravity research artifacts created outside the repo under `~/.gemini/antigravity/brain/...`
 - a direct local filesystem inspection on this Linux machine
+- a direct local inspection of the installed Antigravity application bundle on this Linux machine
 - the existing normalized session model and mirror contract
 
 ### What Was Actually Found Locally
@@ -44,6 +45,78 @@ Observed constraints from local inspection:
 - `file` only reported generic binary `data`
 - `strings` output was not meaningfully readable
 - `protoc` was not installed locally, so no schema-free decode was available
+
+### What Was Confirmed From The Installed Application
+
+Local inspection of the installed application found:
+
+- `/usr/bin/antigravity` launches the packaged application bundle
+- the packaged bundle lives under `/usr/share/antigravity/resources/app/`
+- the bundle explicitly depends on:
+  - `@bufbuild/protobuf`
+  - `@exa/proto-ts`
+
+The compiled bundle also confirms that Antigravity stores app data under:
+
+- `~/.gemini/antigravity`
+
+This comes from bundled helpers that resolve the app data root from:
+
+- `[".gemini", ideName]`
+
+and from bundled path-segment constants such as:
+
+- `userSettingsFilePathSegments: ["user_settings.pb"]`
+- `artifactsDirPathSegments: ["brain"]`
+- `knowledgeItemsPathSegments: ["knowledge"]`
+- `mcpConfigFilePathSegments: ["mcp_config.json"]`
+
+This is stronger evidence than the earlier external notes because it comes from the installed product itself.
+
+### What Was Confirmed About Internal Data Modeling
+
+The application bundle contains generated protobuf code for at least one Gemini Coder trajectory model:
+
+- `../exa/proto_ts/out/dist/exa/gemini_coder/proto/trajectory_pb.js`
+
+That generated code includes message names such as:
+
+- `Conversation`
+- `ConversationState`
+- `Trajectory`
+- `Step`
+
+and fields such as:
+
+- `conversation_id`
+- `trajectory_id`
+- `cascade_id`
+- `steps`
+- `metadata`
+
+This does not prove that the local `.pb` session artifacts are direct serialized `Trajectory` messages, but it does confirm that protobuf-backed conversation and trajectory concepts are first-class inside the application.
+
+### What Was Confirmed About The Local `.pb` Files
+
+The local `.pb` files currently look opaque from outside the application.
+
+Observed behavior:
+
+- no gzip header
+- no common zlib header
+- not meaningfully readable through `strings`
+- a lightweight protobuf wire-format probe does not walk them cleanly as straightforward protobuf messages
+
+That means the `.pb` files may be:
+
+- wrapped in an additional container format
+- compressed with a non-trivial encoding
+- encrypted or authenticated
+- or serialized in a way that is not directly useful without the app's own decode path
+
+For this repo, the important conclusion is simple:
+
+- we should not assume `conversations/*.pb` or `implicit/*.pb` are directly parseable fixtures yet
 
 ### What Still Comes Only From The External Research Notes
 
@@ -102,6 +175,7 @@ Likely interpretations:
 - `brain/` may be a workspace/artifact area rather than the canonical conversation store
 - `conversations/*.pb` may hold primary session state or transcript data
 - `implicit/*.pb` may hold secondary or background conversation state
+- `brain/` is also explicitly referenced by the installed app as an artifacts directory, which makes it more likely to be derived or auxiliary than a clean transcript anchor
 
 This means Antigravity may be structurally different from both:
 
@@ -126,6 +200,7 @@ These parts should not be treated as settled yet:
 - that `terminal_history.txt` exists consistently and is the right tool-call source
 - whether `conversations/*.pb` or `implicit/*.pb` are the real provider-native session artifacts
 - whether the `.pb` files can be decoded without provider-specific tooling or schema knowledge
+- whether the `.pb` files are plain protobuf messages at all, rather than wrapped or protected containers
 - that all sessions share the same directory skeleton
 - that `cwd`, `cli_version`, or stable timestamps can always be recovered
 - that tool activity can be normalized safely in the first pass
@@ -197,6 +272,12 @@ Possible answers now include:
 
 This now must be answered from fixtures and format inspection, not inference.
 
+At this point, "format inspection" should mean one of:
+
+- a validated decode path from the installed application
+- an official export or debug path from Antigravity itself
+- a repo-owned sanitized derivative fixture with its decode provenance documented
+
 ## Mapping To The Normalized Model
 
 The first Antigravity adapter should aim for a conservative subset:
@@ -214,11 +295,11 @@ The first Antigravity adapter should aim for a conservative subset:
 
 ## Recommended Parsing Posture
 
-The first parser should be conservative and text-oriented.
+The first parser should be conservative and evidence-led.
 
 It should prefer:
 
-- readable user/assistant/context extraction
+- readable user/assistant/context extraction when a decoded source exists
 - stable metadata extraction
 - minimal notable events only when clearly identified
 
@@ -227,6 +308,7 @@ It should avoid:
 - aggressive tool-call reconstruction
 - guessing event semantics from arbitrary generated files
 - mixing planning artifacts and transcript artifacts without strong evidence
+- direct parsing of opaque `.pb` files without a validated decode or export path
 
 ## Fixture Requirements
 
@@ -251,13 +333,14 @@ Ideal additional fixture:
 ## Recommended Implementation Sequence
 
 1. capture and sanitize one real Antigravity session fixture
-2. determine whether the primary source is binary protobuf or a derived text/log surface
-3. document the decoding/export assumption used for the fixture
-4. define the primary session anchor rule
-5. implement a conservative `antigravity` adapter
-6. add provider-level tests first
-7. add one mirror export test
-8. only after that revisit whether user-facing provider selection is warranted
+2. determine whether the primary source is binary protobuf or a validated derived export surface
+3. document the decoding or export assumption used for the fixture
+4. identify whether the app itself exposes the canonical anchor as conversation, trajectory, or another container
+5. define the primary session anchor rule
+6. implement a conservative `antigravity` adapter
+7. add provider-level tests first
+8. add one mirror export test
+9. only after that revisit whether user-facing provider selection is warranted
 
 ## Recommendation
 

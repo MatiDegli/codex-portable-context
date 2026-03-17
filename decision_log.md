@@ -194,3 +194,17 @@ Why:
 
 - local inspection found real-looking session artifacts in binary `.pb` files, not readable text logs
 - implementing against the earlier `brain/` assumption now would likely target the wrong source surface
+
+## 2026-03-17 - Antigravity remains blocked on decode or export evidence
+
+Decision:
+
+- treat Antigravity as protobuf-backed but still opaque from outside the application
+- do not implement the Antigravity adapter until we have a validated decode path or a documented exported fixture
+- treat `brain/` as an artifacts-area clue, not as a proven transcript anchor
+
+Why:
+
+- the installed application bundle explicitly depends on protobuf tooling and embeds trajectory-oriented protobuf models
+- the local `.pb` artifacts do not behave like straightforward protobuf messages under lightweight inspection
+- building an adapter before the decode or export path is understood would create a fragile provider-specific fork
