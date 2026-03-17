@@ -111,3 +111,18 @@ Why:
 
 - this is enough to validate the thin-extension direction with low maintenance cost
 - the extension can already cover the smallest useful UX surface without introducing a TypeScript or webview-heavy stack
+
+## 2026-03-17 - Multi-provider roadmap staged after Codex polish
+
+Decision:
+
+- keep Codex as the reference provider first
+- introduce a provider adapter layer before adding other providers
+- add Claude Code next
+- add Antigravity after that
+- postpone experimental cross-device continuity until provider adapters are stable
+
+Why:
+
+- this preserves one durable Python core instead of drifting into provider-specific products
+- normalized adapters are a safer foundation for future continuity than raw provider state
