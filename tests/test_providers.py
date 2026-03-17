@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from codex_portable_context.core.parsing import ParsedSession
 from codex_portable_context.providers import get_provider_adapter, registered_provider_ids
 
 
@@ -24,3 +25,48 @@ def test_codex_adapter_filters_rollout_session_files(tmp_path: Path) -> None:
     adapter = get_provider_adapter("codex")
 
     assert [path.name for path in adapter.iter_session_files(source_dir)] == [included.name]
+
+
+def test_codex_adapter_session_hints_use_source_index_and_file_timestamp(tmp_path: Path) -> None:
+    session_file = tmp_path / "rollout-2026-03-16T10-00-00-session.jsonl"
+    session_file.write_text("", encoding="utf-8")
+    adapter = get_provider_adapter("codex")
+    parsed = ParsedSession(
+        provider="codex",
+        provider_session_id="session-1234",
+        source_file=session_file,
+        source_relpath="2026/03/16/rollout-2026-03-16T10-00-00-session.jsonl",
+        session_id="session-1234",
+        session_timestamp="2026-03-16T09:59:00Z",
+        cwd=None,
+        originator=None,
+        source=None,
+        model_provider=None,
+        cli_version=None,
+        context_entries=[],
+        conversation_entries=[],
+        notable_events=[],
+        user_messages=[],
+        assistant_messages=[],
+        event_count=0,
+        context_entry_count=0,
+        user_message_count=0,
+        assistant_message_count=0,
+        tool_call_count=0,
+        tool_output_count=0,
+        notable_event_count=0,
+    )
+
+    hints = adapter.session_hints(
+        parsed=parsed,
+        source_index={
+            "session-1234": {
+                "thread_name": "Fixture Session",
+                "updated_at": "2026-03-16T10:00:06Z",
+            }
+        },
+        session_file=session_file,
+    )
+
+    assert hints.thread_name == "Fixture Session"
+    assert hints.updated_at == "2026-03-16T10:00:06Z"

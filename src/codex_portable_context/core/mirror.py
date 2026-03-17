@@ -75,9 +75,13 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
 
     for session_file in provider.iter_session_files(config.source_dir):
         parsed = provider.parse_session_file(session_file, config.source_dir)
-        source_meta = source_index.get(parsed.session_id, {})
-        thread_name = _string_value(source_meta.get("thread_name"))
-        updated_at = _string_value(source_meta.get("updated_at")) or _file_updated_at(session_file)
+        session_hints = provider.session_hints(
+            parsed=parsed,
+            source_index=source_index,
+            session_file=session_file,
+        )
+        thread_name = session_hints.thread_name
+        updated_at = session_hints.updated_at
         source_relpath = parsed.source_relpath
         seen_relpaths.add(source_relpath)
 
@@ -152,15 +156,16 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
 
     ordered_entries = sort_entries(index_entries)
     _write_index(layout.index_path, ordered_entries)
+    mirror_exported_at = _iso_now()
     _write_reader_index(
         path=layout.reader_index_path,
         entries=ordered_entries,
-        exported_at=_iso_now(),
+        exported_at=mirror_exported_at,
         redacted_export=config.redact,
     )
     landing = render_landing(
         entries=ordered_entries,
-        exported_at=_iso_now(),
+        exported_at=mirror_exported_at,
         redacted_export=config.redact,
     )
     _write_landing(layout.landing_path, landing)
@@ -194,6 +199,7 @@ def _render_session_export(
 ) -> dict[str, Any]:
     title = derive_session_title(parsed, thread_name)
     summary = build_summary(parsed)
+    exported_at = _iso_now()
     metadata_entry = {
         "provider": parsed.provider,
         "provider_session_id": parsed.provider_session_id,
@@ -201,7 +207,7 @@ def _render_session_export(
         "title": title,
         "export_profile": config.export_profile,
         "thread_name": thread_name,
-        "exported_at": _iso_now(),
+        "exported_at": exported_at,
         "updated_at": updated_at,
         "source_file": str(parsed.source_file),
         "source_relpath": parsed.source_relpath,
@@ -330,19 +336,5 @@ def _remove_if_present(path: Path) -> bool:
         path.unlink()
         return True
     return False
-
-
-def _file_updated_at(path: Path) -> str:
-    timestamp = datetime.fromtimestamp(path.stat().st_mtime_ns / 1_000_000_000, tz=UTC)
-    return timestamp.isoformat().replace("+00:00", "Z")
-
-
 def _iso_now() -> str:
     return datetime.now(tz=UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _string_value(value: object) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None

@@ -22,6 +22,14 @@ class ProviderCapabilities:
     supports_latest_selection: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ProviderSessionHints:
+    """Small provider-supplied session hints used by the exporter."""
+
+    thread_name: str | None = None
+    updated_at: str | None = None
+
+
 class SessionProviderAdapter(Protocol):
     """Minimal provider adapter contract for source discovery and parsing."""
 
@@ -32,6 +40,15 @@ class SessionProviderAdapter(Protocol):
 
     def load_source_index(self, home_dir: Path) -> dict[str, JsonObject]:
         """Load optional provider-native summary/index data keyed by session id."""
+
+    def session_hints(
+        self,
+        *,
+        parsed: ParsedSession,
+        source_index: dict[str, JsonObject],
+        session_file: Path,
+    ) -> ProviderSessionHints:
+        """Return provider-specific export hints for one parsed session."""
 
     def parse_session_file(self, path: Path, source_dir: Path) -> ParsedSession:
         """Parse one raw provider session file into the normalized session model."""
