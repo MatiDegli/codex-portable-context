@@ -8,12 +8,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from codex_portable_context.core.parsing import (
-    JsonObject,
     ParsedSession,
     load_source_session_index,
     parse_session_file,
 )
-from codex_portable_context.providers.base import ProviderCapabilities, ProviderSessionHints
+from codex_portable_context.providers.base import (
+    ProviderCapabilities,
+    ProviderSessionHints,
+    ProviderSourceContext,
+)
 
 
 class CodexSessionAdapter:
@@ -37,16 +40,19 @@ class CodexSessionAdapter:
             if path.is_file()
         )
 
-    def load_source_index(self, home_dir: Path) -> dict[str, JsonObject]:
-        return load_source_session_index(home_dir)
+    def build_source_context(self, home_dir: Path) -> ProviderSourceContext:
+        return ProviderSourceContext(
+            native_index_by_session_id=load_source_session_index(home_dir)
+        )
 
     def session_hints(
         self,
         *,
         parsed: ParsedSession,
-        source_index: dict[str, JsonObject],
+        source_context: ProviderSourceContext,
         session_file: Path,
     ) -> ProviderSessionHints:
+        source_index = source_context.native_index_by_session_id or {}
         source_meta = source_index.get(parsed.session_id, {})
         thread_name = _string_value(source_meta.get("thread_name"))
         updated_at = _string_value(source_meta.get("updated_at")) or _file_updated_at(session_file)

@@ -62,7 +62,7 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
     _prepare_layout(layout)
     provider = get_provider_adapter(config.provider)
 
-    source_index = provider.load_source_index(config.codex_home)
+    source_context = provider.build_source_context(config.codex_home)
     redaction_context = RedactionContext.detect()
     previous_state = load_state(layout.state_path)
 
@@ -77,7 +77,7 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
         parsed = provider.parse_session_file(session_file, config.source_dir)
         session_hints = provider.session_hints(
             parsed=parsed,
-            source_index=source_index,
+            source_context=source_context,
             session_file=session_file,
         )
         thread_name = session_hints.thread_name

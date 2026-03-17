@@ -4,6 +4,7 @@ import pytest
 
 from codex_portable_context.core.parsing import ParsedSession
 from codex_portable_context.providers import get_provider_adapter, registered_provider_ids
+from codex_portable_context.providers.base import ProviderSourceContext
 
 
 def test_provider_registry_exposes_codex_adapter() -> None:
@@ -42,7 +43,34 @@ def test_codex_adapter_filters_rollout_session_files(tmp_path: Path) -> None:
     assert [path.name for path in adapter.iter_session_files(source_dir)] == [included.name]
 
 
-def test_codex_adapter_session_hints_use_source_index_and_file_timestamp(tmp_path: Path) -> None:
+def test_codex_adapter_builds_source_context_from_session_index(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    home_dir = tmp_path / "codex-home"
+    home_dir.mkdir()
+    session_index = home_dir / "session_index.jsonl"
+    session_index.write_text(
+        (
+            '{"id":"session-1234","thread_name":"Fixture Session",'
+            '"updated_at":"2026-03-16T10:00:06Z"}\n'
+        ),
+        encoding="utf-8",
+    )
+
+    adapter = get_provider_adapter("codex")
+    context = adapter.build_source_context(home_dir)
+
+    assert context.native_index_by_session_id == {
+        "session-1234": {
+            "id": "session-1234",
+            "thread_name": "Fixture Session",
+            "updated_at": "2026-03-16T10:00:06Z",
+        }
+    }
+
+
+def test_codex_adapter_session_hints_use_source_context_and_file_timestamp(tmp_path: Path) -> None:
     session_file = tmp_path / "rollout-2026-03-16T10-00-00-session.jsonl"
     session_file.write_text("", encoding="utf-8")
     adapter = get_provider_adapter("codex")
@@ -74,12 +102,14 @@ def test_codex_adapter_session_hints_use_source_index_and_file_timestamp(tmp_pat
 
     hints = adapter.session_hints(
         parsed=parsed,
-        source_index={
-            "session-1234": {
-                "thread_name": "Fixture Session",
-                "updated_at": "2026-03-16T10:00:06Z",
+        source_context=ProviderSourceContext(
+            native_index_by_session_id={
+                "session-1234": {
+                    "thread_name": "Fixture Session",
+                    "updated_at": "2026-03-16T10:00:06Z",
+                }
             }
-        },
+        ),
         session_file=session_file,
     )
 

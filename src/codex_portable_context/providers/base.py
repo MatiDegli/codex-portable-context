@@ -33,6 +33,13 @@ class ProviderSessionHints:
     updated_at: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ProviderSourceContext:
+    """Provider-native source context prepared once per export run."""
+
+    native_index_by_session_id: dict[str, JsonObject] | None = None
+
+
 class SessionProviderAdapter(Protocol):
     """Minimal provider adapter contract for source discovery and parsing."""
 
@@ -47,14 +54,14 @@ class SessionProviderAdapter(Protocol):
     def iter_session_files(self, source_dir: Path) -> Iterator[Path]:
         """Yield raw provider session files in deterministic order."""
 
-    def load_source_index(self, home_dir: Path) -> dict[str, JsonObject]:
-        """Load optional provider-native summary/index data keyed by session id."""
+    def build_source_context(self, home_dir: Path) -> ProviderSourceContext:
+        """Build provider-native source context for one export run."""
 
     def session_hints(
         self,
         *,
         parsed: ParsedSession,
-        source_index: dict[str, JsonObject],
+        source_context: ProviderSourceContext,
         session_file: Path,
     ) -> ProviderSessionHints:
         """Return provider-specific export hints for one parsed session."""
