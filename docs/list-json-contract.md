@@ -22,6 +22,7 @@ Example:
 ```json
 [
   {
+    "provider": "codex",
     "session_id": "019cef3a-f82c-7790-af6d-eeeaca245196",
     "title": "Create Galaxy Book4 helper repo",
     "markdown_relpath": "sessions/019cef3a-f82c-7790-af6d-eeeaca245196.md",
@@ -37,6 +38,7 @@ Example:
 
 The following fields are the stable integration surface for `--json` consumers:
 
+- `provider`
 - `session_id`
 - `title`
 - `updated_at`
@@ -59,6 +61,9 @@ These fields are expected to remain available unless the contract is explicitly 
 
 ### Identity And Basic Labeling
 
+- `provider`
+  - string
+  - stable provider identifier such as `codex`
 - `session_id`
   - string
   - full session identifier

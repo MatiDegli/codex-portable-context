@@ -8,12 +8,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from codex_portable_context.providers import get_provider_adapter
+
 from .contract import LANDING_MARKER, MARKDOWN_FILTER_RULES
-from .discovery import iter_session_files, mirror_layout
+from .discovery import mirror_layout
 from .html_reader import render_reader_index, render_session_reader
 from .index import sort_entries
 from .markdown import render_landing, render_session_markdown
-from .parsing import ParsedSession, load_source_session_index, parse_session_file
+from .parsing import ParsedSession
 from .redaction import RedactionContext, build_redaction_report, redact_text
 from .state import StateRecord, build_input_signature, load_state, save_state
 from .summaries import build_summary, derive_session_title
@@ -26,6 +28,7 @@ class MirrorExportConfig:
     codex_home: Path
     source_dir: Path
     out_dir: Path
+    provider: str = "codex"
     redact: bool = False
     include_context: bool = True
     include_tools: bool = True
@@ -57,8 +60,9 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
 
     layout = mirror_layout(config.out_dir)
     _prepare_layout(layout)
+    provider = get_provider_adapter(config.provider)
 
-    source_index = load_source_session_index(config.codex_home)
+    source_index = provider.load_source_index(config.codex_home)
     redaction_context = RedactionContext.detect()
     previous_state = load_state(layout.state_path)
 
@@ -69,8 +73,8 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
     reused_count = 0
     removed_count = 0
 
-    for session_file in iter_session_files(config.source_dir):
-        parsed = parse_session_file(session_file, config.source_dir)
+    for session_file in provider.iter_session_files(config.source_dir):
+        parsed = provider.parse_session_file(session_file, config.source_dir)
         source_meta = source_index.get(parsed.session_id, {})
         thread_name = _string_value(source_meta.get("thread_name"))
         updated_at = _string_value(source_meta.get("updated_at")) or _file_updated_at(session_file)
@@ -118,6 +122,7 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
 
         metadata_entry = _render_session_export(
             parsed=parsed,
+            provider_id=provider.provider_id,
             thread_name=thread_name,
             updated_at=updated_at,
             layout=layout,
@@ -182,6 +187,7 @@ def _prepare_layout(layout: Any) -> None:
 def _render_session_export(
     *,
     parsed: ParsedSession,
+    provider_id: str,
     thread_name: str | None,
     updated_at: str | None,
     layout: Any,
@@ -191,6 +197,7 @@ def _render_session_export(
     title = derive_session_title(parsed, thread_name)
     summary = build_summary(parsed)
     metadata_entry = {
+        "provider": provider_id,
         "session_id": parsed.session_id,
         "title": title,
         "export_profile": config.export_profile,

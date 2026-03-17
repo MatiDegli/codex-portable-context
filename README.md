@@ -257,6 +257,8 @@ An initial thin extension skeleton also lives under [`extensions/vscode-codex-po
 
 The planned multi-provider direction is: Codex first, provider abstraction next, Claude Code next, Antigravity next, and only later experimental continuity on top of normalized artifacts. See [docs/multi-provider-strategy.md](docs/multi-provider-strategy.md).
 
+The first internal step of that direction is now in place: Codex is being treated as the first provider adapter behind the Python core, without changing the current CLI UX.
+
 ## Bootstrap and Validation
 
 Canonical bootstrap path:

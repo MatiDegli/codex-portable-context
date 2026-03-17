@@ -126,3 +126,16 @@ Why:
 
 - this preserves one durable Python core instead of drifting into provider-specific products
 - normalized adapters are a safer foundation for future continuity than raw provider state
+
+## 2026-03-17 - Adapter layer started with Codex as the first concrete provider
+
+Decision:
+
+- introduce the minimal provider adapter and registry shape now
+- wire the current Codex path through that layer without changing CLI UX
+- add `provider` to derived metadata/index entries as preparation for future multi-provider flows
+
+Why:
+
+- this begins the provider abstraction with low risk and low churn
+- future providers can build on the same derived artifact model instead of forking the product surface

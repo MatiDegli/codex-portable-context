@@ -401,3 +401,13 @@ Follow the roadmap in order:
 5. only then design experimental continuity
 
 That is the cleanest path to a durable multi-provider product without losing the current strengths of `codex-portable-context`.
+
+## Current Repo Status
+
+The repo now has the first small step of the adapter layer in place:
+
+- a minimal provider adapter interface
+- a small provider registry
+- Codex wired as the first concrete adapter
+
+Current user-facing behavior remains Codex-first and unchanged.

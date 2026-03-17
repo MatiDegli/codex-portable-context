@@ -79,6 +79,7 @@ Format:
 
 These fields should remain present for each index entry:
 
+- `provider`
 - `session_id`
 - `title`
 - `export_profile`
@@ -134,6 +135,7 @@ Role:
 
 The metadata file should carry the same stable fields as the index entry:
 
+- `provider`
 - `session_id`
 - `title`
 - `export_profile`

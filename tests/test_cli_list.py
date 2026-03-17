@@ -30,6 +30,7 @@ def test_list_cli_json_exposes_stable_integration_fields(tmp_path: Path, capsys)
     assert len(payload) == 1
 
     item = payload[0]
+    assert item["provider"] == "codex"
     assert item["session_id"] == "session-1234"
     assert item["title"] == "Fixture Session"
     assert item["markdown_relpath"] == "sessions/session-1234.md"

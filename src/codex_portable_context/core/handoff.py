@@ -10,10 +10,12 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from codex_portable_context.providers import get_provider_adapter
+
 from .discovery import mirror_layout
 from .index import MirrorEntry, entry_path
 from .markdown import pretty_timestamp
-from .parsing import ParsedSession, RenderBlock, parse_session_file
+from .parsing import ParsedSession, RenderBlock
 from .redaction import RedactionContext, redact_text
 
 
@@ -298,6 +300,7 @@ def _build_handoff_payload(
 
     return {
         "handoff_schema_version": 1,
+        "provider": metadata.get("provider") or "codex",
         "generated_at": _iso_now(),
         "session_id": metadata.get("session_id"),
         "title": metadata.get("title"),
@@ -353,6 +356,7 @@ def _build_handoff_payload(
 
 
 def _load_source_session(metadata: dict[str, Any]) -> ParsedSession | None:
+    provider_id = _string(metadata.get("provider")) or "codex"
     source_file_value = metadata.get("source_file")
     source_relpath_value = metadata.get("source_relpath")
     if not isinstance(source_file_value, str) or not source_file_value.strip():
@@ -365,7 +369,8 @@ def _load_source_session(metadata: dict[str, Any]) -> ParsedSession | None:
         return None
 
     source_dir = _infer_source_dir(source_file.resolve(), source_relpath_value)
-    return parse_session_file(source_file.resolve(), source_dir)
+    adapter = get_provider_adapter(provider_id)
+    return adapter.parse_session_file(source_file.resolve(), source_dir)
 
 
 def _infer_source_dir(source_file: Path, source_relpath: str) -> Path:
