@@ -66,6 +66,8 @@ The top of the handoff is optimized for quick re-entry. The lower sections stay 
 - starting a fresh Codex session with a strong context package
 - preserving a compact operator-oriented snapshot of a session
 
+For the exact minimum cross-device package expected on the destination machine, see [Codex Continuity Bundle](./codex-continuity-bundle.md).
+
 ## What It Does Not Do
 
 - it does not import anything into `~/.codex`

@@ -63,6 +63,8 @@ Before implementation starts:
 ### Deliverable
 
 - one documented Codex-only continuity workflow that stays fully inside derived artifacts
+- one explicit Codex bundle definition:
+  - [Codex Continuity Bundle](./codex-continuity-bundle.md)
 
 ## Phase 2: Continuity Readiness Gaps
 
