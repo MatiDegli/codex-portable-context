@@ -210,7 +210,9 @@ The extension should try Python-first invocation in this order:
 
 1. configured command path from extension settings, if present
 2. workspace-local virtual environment entrypoint
-3. workspace-local module fallback through the venv interpreter
+3. configured Python interpreter fallback, if present
+4. workspace-local module fallback through the venv interpreter
+5. command name on `PATH` as a last-resort compatibility fallback
 
 Practical examples:
 
@@ -275,3 +277,16 @@ The extension should prefer showing the original CLI stderr with a short extensi
 Build the extension as a thin orchestration layer on top of the current Python CLI.
 
 That gives developers a smoother in-editor workflow while preserving the architecture that already makes the project portable, testable, and cross-platform.
+
+## Current Repo Status
+
+The repo now includes an initial extension skeleton under:
+
+- `extensions/vscode-codex-portable-context/`
+
+It is intentionally minimal:
+
+- manifest plus command contributions
+- a single JS extension entrypoint
+- no mirror or handoff logic duplicated from Python
+- no build step required for the first local iteration

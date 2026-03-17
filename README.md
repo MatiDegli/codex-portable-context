@@ -253,6 +253,8 @@ See [docs/vscode-extension-strategy.md](docs/vscode-extension-strategy.md).
 
 For machine-readable session selection, see the small integration contract for [`codex-session-list --json`](docs/list-json-contract.md).
 
+An initial thin extension skeleton also lives under [`extensions/vscode-codex-portable-context/`](extensions/vscode-codex-portable-context/README.md). It is intentionally a frontend over the Python CLI, not a second implementation.
+
 ## Bootstrap and Validation
 
 Canonical bootstrap path:

@@ -99,3 +99,15 @@ Why:
 
 - the current architecture already gives the project a cross-platform, editor-independent core
 - a thin extension can improve developer UX without reintroducing a second implementation path
+
+## 2026-03-17 - Initial VS Code extension skeleton added
+
+Decision:
+
+- add a minimal workspace extension skeleton that only orchestrates the Python CLI
+- keep the first implementation in plain JavaScript without a build step
+
+Why:
+
+- this is enough to validate the thin-extension direction with low maintenance cost
+- the extension can already cover the smallest useful UX surface without introducing a TypeScript or webview-heavy stack

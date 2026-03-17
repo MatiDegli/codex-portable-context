@@ -1,0 +1,83 @@
+{
+  "name": "codex-portable-context-vscode",
+  "displayName": "Codex Portable Context",
+  "description": "Thin VS Code frontend for the codex-portable-context Python CLI.",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onCommand:codexPortableContext.exportMirror",
+    "onCommand:codexPortableContext.generateHandoff",
+    "onCommand:codexPortableContext.openLatestReader",
+    "onCommand:codexPortableContext.openLatestHandoff",
+    "onCommand:codexPortableContext.openSessionReader",
+    "onCommand:codexPortableContext.openSessionMarkdown"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codexPortableContext.exportMirror",
+        "title": "Codex Portable Context: Export Mirror"
+      },
+      {
+        "command": "codexPortableContext.generateHandoff",
+        "title": "Codex Portable Context: Generate Handoff"
+      },
+      {
+        "command": "codexPortableContext.openLatestReader",
+        "title": "Codex Portable Context: Open Latest Reader"
+      },
+      {
+        "command": "codexPortableContext.openLatestHandoff",
+        "title": "Codex Portable Context: Open Latest Handoff"
+      },
+      {
+        "command": "codexPortableContext.openSessionReader",
+        "title": "Codex Portable Context: Open Session Reader"
+      },
+      {
+        "command": "codexPortableContext.openSessionMarkdown",
+        "title": "Codex Portable Context: Open Session Markdown"
+      }
+    ],
+    "configuration": {
+      "title": "Codex Portable Context",
+      "properties": {
+        "codexPortableContext.workingDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Workspace or tool working directory. If empty, the first workspace folder is used."
+        },
+        "codexPortableContext.outDir": {
+          "type": "string",
+          "default": "./out",
+          "description": "Mirror output directory to use for export and read-side commands. Relative paths are resolved from the working directory."
+        },
+        "codexPortableContext.commandDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Optional directory that contains installed codex-session-* entrypoints."
+        },
+        "codexPortableContext.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Python interpreter path used for module fallback when entrypoints are unavailable."
+        },
+        "codexPortableContext.preferRedactedExport": {
+          "type": "boolean",
+          "default": false,
+          "description": "Default Export Mirror to a redacted export when no per-run choice overrides it."
+        }
+      }
+    }
+  }
+}
