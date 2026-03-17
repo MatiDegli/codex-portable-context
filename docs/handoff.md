@@ -26,6 +26,8 @@ The handoff bundle starts from the derived mirror:
 
 If the original local source session file is still available through `metadata.source_file`, the bundle also extracts:
 
+- a compact current-state layer
+- recent normalized actions
 - a recent conversation window
 - recent notable events
 - recent tool activity
@@ -43,6 +45,20 @@ The handoff is extractive and deterministic:
 
 This keeps it auditable and avoids introducing API or model dependencies.
 
+## Current Shape
+
+The Markdown handoff is intentionally layered:
+
+1. `Snapshot`
+2. `Current State`
+3. `Artifacts`
+4. `Operator Note Template`
+5. `Recent Actions (normalized)`
+6. `Transcript Excerpt`
+7. raw audit-trail sections
+
+The top of the handoff is optimized for quick re-entry. The lower sections stay extractive and verbose on purpose for traceability.
+
 ## What It Is Good For
 
 - moving work context from one device to another
@@ -55,6 +71,8 @@ This keeps it auditable and avoids introducing API or model dependencies.
 - it does not recreate a live session
 - it does not guarantee a perfect semantic summary
 - it does not replace reading the full transcript when details matter
+
+`Current State` and `Recent Actions` are still heuristic and extractive. They are meant to improve operator speed, not to replace the full transcript when exact detail matters.
 
 ## Usage
 

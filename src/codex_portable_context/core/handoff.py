@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -39,6 +41,7 @@ def generate_handoff(entry: MirrorEntry, out_dir: Path | None = None) -> Handoff
 
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     transcript_text = markdown_path.read_text(encoding="utf-8")
+    cwd = _string(metadata.get("cwd"))
 
     parsed = _load_source_session(metadata)
     handoff = _build_handoff_payload(
@@ -46,6 +49,8 @@ def generate_handoff(entry: MirrorEntry, out_dir: Path | None = None) -> Handoff
         transcript_text=transcript_text,
         parsed=parsed,
         reader_relpath=reader_relpath,
+        out_dir=layout.out_dir,
+        cwd=Path(cwd).expanduser() if cwd else None,
     )
 
     handoff_json_path = layout.handoff_json_path(session_id)
@@ -71,18 +76,28 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
 
     session = _as_dict(handoff.get("session"))
     artifacts = _as_dict(handoff.get("artifacts"))
+    current_state = _as_dict(handoff.get("current_state"))
     source = _as_dict(handoff.get("source_availability"))
     template = _as_dict(handoff.get("operator_note_template"))
+    recent_actions = _as_list(handoff.get("recent_actions"))
     recent_window = _as_list(handoff.get("recent_window"))
     recent_events = _as_list(handoff.get("recent_notable_events"))
     recent_tools = _as_list(handoff.get("recent_tool_activity"))
     transcript_link = _handoff_relpath(_string(artifacts.get("markdown_relpath")))
     metadata_link = _handoff_relpath(_string(artifacts.get("metadata_relpath")))
     reader_link = _handoff_relpath(_string(artifacts.get("reader_relpath")))
+    handoff_json_link = _handoff_sibling_relpath(_string(artifacts.get("handoff_json_relpath")))
     updated_at = pretty_timestamp(
         _string(handoff.get("updated_at")) or _string(handoff.get("session_timestamp"))
     )
     generated_at = pretty_timestamp(_string(handoff.get("generated_at")))
+    repo_state = (
+        "clean"
+        if artifacts.get("repo_clean") is True
+        else "dirty"
+        if artifacts.get("repo_clean") is False
+        else "unknown"
+    )
 
     lines: list[str] = [
         f"# Handoff: {session.get('title') or handoff.get('session_id')}",
@@ -101,16 +116,30 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         f"- Source session available locally: `{'yes' if source.get('available') else 'no'}`",
         "",
         f"- Started with: {session.get('preview') or 'n/a'}",
-        f"- Last user message: {session.get('last_user_message') or 'n/a'}",
+        f"- Last substantive user request: {session.get('last_substantive_user_request') or 'n/a'}",
         f"- Latest assistant reply: {session.get('last_assistant_message') or 'n/a'}",
         f"- Activity: {session.get('activity') or 'n/a'}",
         f"- Environment: {session.get('environment') or 'n/a'}",
+        "",
+        "## Current State",
+        "",
+        f"- Status: `{current_state.get('status') or 'unknown'}`",
+        f"- Current focus: {current_state.get('current_focus') or 'n/a'}",
+        f"- Last meaningful outcome: {current_state.get('last_meaningful_outcome') or 'n/a'}",
+        f"- Next recommended action: {current_state.get('next_recommended_action') or 'n/a'}",
+        f"- Known blocker: {current_state.get('known_blocker') or 'none'}",
         "",
         "## Artifacts",
         "",
         f"- Transcript: [{artifacts.get('markdown_relpath')}]({transcript_link})",
         f"- Metadata: [{artifacts.get('metadata_relpath')}]({metadata_link})",
         f"- Reader: [{artifacts.get('reader_relpath')}]({reader_link})",
+        f"- Handoff Markdown: `{artifacts.get('handoff_markdown_relpath') or 'n/a'}`",
+        f"- Handoff JSON: [{artifacts.get('handoff_json_relpath')}]({handoff_json_link})",
+        f"- Repo root: `{artifacts.get('repo_root') or 'n/a'}`",
+        f"- Branch: `{artifacts.get('repo_branch') or 'n/a'}`",
+        f"- HEAD commit: `{artifacts.get('repo_head_commit') or 'n/a'}`",
+        f"- Repo state: `{repo_state}`",
         "",
         "## Operator Note Template",
         "",
@@ -119,6 +148,12 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         f"- Known risks: {template.get('known_risks')}",
         "",
     ]
+
+    if recent_actions:
+        lines.extend(["## Recent Actions (normalized)", ""])
+        for action in recent_actions:
+            lines.append(f"- {action}")
+        lines.append("")
 
     excerpt = _string(handoff.get("transcript_excerpt"))
     if excerpt:
@@ -132,7 +167,7 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         )
 
     if recent_window:
-        lines.extend(["## Recent Conversation Window", ""])
+        lines.extend(["## Recent Conversation Window (audit trail)", ""])
         for item in recent_window:
             block = _as_dict(item)
             lines.extend(
@@ -147,7 +182,7 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
             )
 
     if recent_events:
-        lines.extend(["## Recent Notable Events", ""])
+        lines.extend(["## Recent Notable Events (audit trail)", ""])
         for item in recent_events:
             event = _as_dict(item)
             timestamp = pretty_timestamp(_string(event.get("timestamp")))
@@ -160,7 +195,7 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         lines.append("")
 
     if recent_tools:
-        lines.extend(["## Recent Tool Activity", ""])
+        lines.extend(["## Recent Tool Activity (audit trail)", ""])
         for item in recent_tools:
             tool = _as_dict(item)
             lines.extend(
@@ -183,10 +218,33 @@ def _build_handoff_payload(
     transcript_text: str,
     parsed: ParsedSession | None,
     reader_relpath: str,
+    out_dir: Path,
+    cwd: Path | None,
 ) -> dict[str, Any]:
     summary = _as_dict(metadata.get("summary"))
     redacted = bool(metadata.get("redacted"))
     redaction_context = RedactionContext.detect()
+    last_substantive_user_request = (
+        _last_substantive_user_request(parsed.user_messages)
+        if parsed
+        else _string(summary.get("last_user_message"))
+    )
+    recent_actions = (
+        _recent_actions(parsed.conversation_entries, redacted=redacted, context=redaction_context)
+        if parsed
+        else []
+    )
+    current_state = _build_current_state(
+        parsed=parsed,
+        summary=summary,
+        last_substantive_user_request=last_substantive_user_request,
+        recent_actions=recent_actions,
+    )
+    repo_state = _detect_repo_state(cwd)
+    layout = mirror_layout(out_dir)
+    session_id = _string(metadata.get("session_id"))
+    handoff_markdown_relpath = str(layout.handoff_markdown_relpath(session_id))
+    handoff_json_relpath = str(layout.handoff_json_relpath(session_id))
 
     recent_window = (
         [
@@ -227,16 +285,24 @@ def _build_handoff_payload(
             "preview": summary.get("preview", ""),
             "first_user_message": summary.get("first_user_message", ""),
             "last_user_message": summary.get("last_user_message", ""),
+            "last_substantive_user_request": last_substantive_user_request,
             "last_assistant_message": summary.get("last_assistant_message", ""),
             "activity": summary.get("activity", ""),
             "environment": summary.get("environment", ""),
             "detail_line": summary.get("detail_line", ""),
             "one_line": summary.get("one_line", ""),
         },
+        "current_state": current_state,
         "artifacts": {
             "metadata_relpath": str(metadata.get("metadata_relpath") or ""),
             "markdown_relpath": str(metadata.get("markdown_relpath") or ""),
             "reader_relpath": reader_relpath,
+            "handoff_markdown_relpath": handoff_markdown_relpath,
+            "handoff_json_relpath": handoff_json_relpath,
+            "repo_root": repo_state["repo_root"],
+            "repo_branch": repo_state["repo_branch"],
+            "repo_head_commit": repo_state["repo_head_commit"],
+            "repo_clean": repo_state["repo_clean"],
         },
         "source_availability": {
             "available": parsed is not None,
@@ -248,6 +314,7 @@ def _build_handoff_payload(
                 else "Only derived mirror data was available locally."
             ),
         },
+        "recent_actions": recent_actions,
         "recent_window": recent_window,
         "recent_notable_events": recent_events,
         "recent_tool_activity": recent_tools,
@@ -314,6 +381,219 @@ def _iso_now() -> str:
     return datetime.now(tz=UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _build_current_state(
+    *,
+    parsed: ParsedSession | None,
+    summary: dict[str, Any],
+    last_substantive_user_request: str,
+    recent_actions: list[str],
+) -> dict[str, str]:
+    status = "in_progress"
+    if parsed and parsed.notable_events:
+        latest_event = parsed.notable_events[-1]
+        lowered = latest_event.label.lower()
+        if "turn_aborted" in lowered:
+            status = "blocked"
+        elif "task_complete" in lowered or "item_completed" in lowered:
+            status = "done"
+
+    current_focus = last_substantive_user_request or _string(summary.get("preview"))
+    last_meaningful_outcome = recent_actions[0] if recent_actions else _string(
+        summary.get("last_assistant_message")
+    )
+    if status == "blocked":
+        next_action = "Inspect the latest aborted turn or failing command before continuing."
+        blocker = "Latest turn or task ended in an aborted state."
+    elif status == "done":
+        next_action = (
+            "Review the handoff artifacts and decide whether to start a "
+            "new follow-up task."
+        )
+        blocker = "none"
+    else:
+        next_action = (
+            "Continue from the current focus using the latest handoff "
+            "and transcript context."
+        )
+        blocker = "none"
+
+    return {
+        "status": status,
+        "current_focus": current_focus,
+        "last_meaningful_outcome": last_meaningful_outcome,
+        "next_recommended_action": next_action,
+        "known_blocker": blocker,
+    }
+
+
+def _last_substantive_user_request(messages: list[str]) -> str:
+    for message in reversed(messages):
+        cleaned = _clean_user_request(message)
+        if cleaned and not _is_trivial_request(cleaned):
+            return cleaned
+    return ""
+
+
+def _clean_user_request(message: str) -> str:
+    text = message.strip()
+    marker = "## My request for Codex:"
+    if marker in text:
+        text = text.split(marker, 1)[1].strip()
+    return _excerpt_text(" ".join(text.split()), limit=220)
+
+
+def _is_trivial_request(text: str) -> bool:
+    lowered = text.strip().lower().rstrip(".!")
+    return lowered in {
+        "proceed",
+        "procede",
+        "continue",
+        "continuar",
+        "go on",
+        "dale",
+        "ok",
+    }
+
+
+def _recent_actions(
+    conversation_entries: list[RenderBlock],
+    *,
+    redacted: bool,
+    context: RedactionContext,
+) -> list[str]:
+    actions: list[str] = []
+    seen: set[str] = set()
+
+    for block in reversed(conversation_entries[-20:]):
+        action = _normalized_action(block, redacted=redacted, context=context)
+        if not action or action in seen:
+            continue
+        seen.add(action)
+        actions.append(action)
+        if len(actions) >= 6:
+            break
+
+    return actions
+
+
+def _normalized_action(
+    block: RenderBlock,
+    *,
+    redacted: bool,
+    context: RedactionContext,
+) -> str:
+    if block.kind == "tool_output" and "Updated the following files:" in block.text:
+        files = _updated_files_from_tool_output(block.text)
+        if files:
+            rendered_files = ", ".join(files[:3])
+            return f"updated {rendered_files}"
+
+    if block.kind != "tool_call":
+        return ""
+
+    tool_name = block.tool_name or ""
+    if tool_name != "exec_command":
+        return ""
+
+    payload = _parse_tool_call_json(block.text)
+    cmd = _string(payload.get("cmd"))
+    if not cmd:
+        return ""
+
+    if "./scripts/validate-python-v2" in cmd:
+        return "ran ./scripts/validate-python-v2"
+    if "codex-session-mirror" in cmd and "codex-session-handoff" in cmd:
+        return "regenerated derived mirror"
+    if "codex-session-mirror" in cmd:
+        return "regenerated derived mirror"
+    if "codex-session-handoff" in cmd:
+        return ""
+    if "handoffs/" in cmd or "Handoff Markdown" in cmd or "Jump to handoff" in cmd:
+        return "verified reader links to handoffs/"
+    if re.search(r"\bpytest\b|\bmypy\b|\bruff\b", cmd):
+        return f"ran `{_excerpt_text(cmd, limit=80)}`"
+    if re.fullmatch(r"\s*pwd\s*", cmd):
+        return "ran `pwd`"
+    return ""
+
+
+def _updated_files_from_tool_output(text: str) -> list[str]:
+    files: list[str] = []
+    capture = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "Updated the following files:" in line:
+            capture = True
+            continue
+        if not capture:
+            continue
+        if line.startswith("{") or line.startswith('"metadata"'):
+            break
+        normalized = re.sub(r"^[A-Z?]+\s+", "", line)
+        if normalized:
+            files.append(Path(normalized).name or normalized)
+    return files
+
+
+def _parse_tool_call_json(text: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _detect_repo_state(cwd: Path | None) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "repo_root": "",
+        "repo_branch": "",
+        "repo_head_commit": "",
+        "repo_clean": None,
+    }
+    if cwd is None or not cwd.exists():
+        return result
+
+    try:
+        repo_root = subprocess.run(
+            ["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        branch = subprocess.run(
+            ["git", "-C", repo_root, "rev-parse", "--abbrev-ref", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        head_commit = subprocess.run(
+            ["git", "-C", repo_root, "rev-parse", "--short", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        status = subprocess.run(
+            ["git", "-C", repo_root, "status", "--porcelain"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return result
+
+    result.update(
+        {
+            "repo_root": repo_root,
+            "repo_branch": branch,
+            "repo_head_commit": head_commit,
+            "repo_clean": not bool(status),
+        }
+    )
+    return result
+
+
 def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -330,3 +610,9 @@ def _handoff_relpath(path: str) -> str:
     if not path:
         return ""
     return "../" + path.lstrip("./")
+
+
+def _handoff_sibling_relpath(path: str) -> str:
+    if not path:
+        return ""
+    return "./" + Path(path).name

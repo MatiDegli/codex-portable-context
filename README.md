@@ -419,6 +419,13 @@ The generated browser reader uses the same summary fields and the optional `read
 
 The handoff bundle is designed for continuity, not raw session import. It uses the derived mirror as the base and, when the local source session is still available, adds a recent conversation window and recent tool activity without using an API or an LLM.
 
+The handoff now also adds a compact top layer for faster re-entry:
+
+- `Current State`
+- expanded `Artifacts`
+- `Recent Actions (normalized)`
+- raw audit-trail sections kept lower in the document
+
 For older mirror outputs, path resolution can fall back to:
 
 - `metadata/<session-id>.json`
