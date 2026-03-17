@@ -14,6 +14,8 @@ Its job is to keep the repo aligned with a conservative implementation posture:
 - no credential sync
 - no write-back into live provider state
 
+Cross-device continuity-specific guardrails are documented in [cross-device-continuity-guardrails.md](./cross-device-continuity-guardrails.md).
+
 ## Product Rule
 
 Providers are not all equal from a policy and integration standpoint.

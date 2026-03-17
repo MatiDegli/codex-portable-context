@@ -222,3 +222,18 @@ Why:
 - current product direction is based on read-only local compatibility, not on unofficial service access
 - provider policy risk is materially higher for Antigravity than for Codex or Claude Code
 - this keeps the roadmap conservative, durable, and aligned with the repo's local-first guardrails
+
+## 2026-03-17 - Cross-device continuity stays derived-artifact only
+
+Decision:
+
+- keep experimental cross-device continuity scoped to normalized derived artifacts only
+- allow this continuity posture for Codex
+- allow this continuity posture for Claude Code only as a complement to official provider flows
+- exclude Antigravity from live continuity work unless an official export/API/policy path exists
+
+Why:
+
+- this keeps continuity aligned with the repo's read-only design
+- it avoids credential sync, raw-state sync, and unofficial session-cloning behavior
+- it is the most conservative path that still preserves cross-device value
