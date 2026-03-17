@@ -18,6 +18,8 @@ from .markdown import pretty_timestamp
 from .parsing import ParsedSession, RenderBlock
 from .redaction import RedactionContext, redact_text
 
+RECENT_ACTION_LOOKBACK = 80
+
 
 @dataclass(frozen=True, slots=True)
 class HandoffResult:
@@ -656,7 +658,7 @@ def _recent_actions(
     actions: list[str] = []
     seen: set[str] = set()
 
-    for block in reversed(conversation_entries[-20:]):
+    for block in reversed(conversation_entries[-RECENT_ACTION_LOOKBACK:]):
         action = _normalized_action(block, redacted=redacted, context=context)
         if not action or action in seen:
             continue

@@ -151,7 +151,24 @@ def test_handoff_cli_cleans_ide_wrapper_request_when_source_missing(
     assert "# Context from my IDE setup" not in payload["session"]["last_substantive_user_request"]
 
 
-def build_fixture_mirror(tmp_path: Path) -> Path:
+def test_handoff_cli_recent_actions_look_back_past_trailing_noise(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(tmp_path, trailing_noop_pairs=25)
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Handoff bundle written:" in captured.out
+
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    assert "ran ./scripts/validate-python-v2" in payload["recent_actions"]
+    assert "updated README.md" in payload["recent_actions"]
+
+
+def build_fixture_mirror(tmp_path: Path, *, trailing_noop_pairs: int = 0) -> Path:
     codex_home = tmp_path / ".codex"
     source_dir = codex_home / "sessions" / "2026" / "03" / "16"
     source_dir.mkdir(parents=True)
@@ -170,6 +187,7 @@ def build_fixture_mirror(tmp_path: Path) -> Path:
         cwd=str(repo_root()),
         wrapped_request="Why is the IDE output empty?",
         include_turn_aborted=True,
+        trailing_noop_pairs=trailing_noop_pairs,
     )
 
     (codex_home / "session_index.jsonl").write_text(
@@ -215,6 +233,7 @@ def write_session(
     cwd: str = "/home/tester/project",
     wrapped_request: str = "Proceed",
     include_turn_aborted: bool = False,
+    trailing_noop_pairs: int = 0,
 ) -> None:
     records = [
         {
@@ -320,6 +339,34 @@ def write_session(
             },
         },
     ]
+    for index in range(trailing_noop_pairs):
+        call_id = f"noop-{session_id}-{index}"
+        timestamp = f"2026-03-16T10:05:{10 + index:02d}Z"
+        records.extend(
+            [
+                {
+                    "timestamp": timestamp,
+                    "type": "response_item",
+                    "payload": {
+                        "type": "function_call",
+                        "name": "exec_command",
+                        "call_id": call_id,
+                        "arguments": json.dumps(
+                            {"cmd": "echo noop", "workdir": "/home/tester/project"}
+                        ),
+                    },
+                },
+                {
+                    "timestamp": timestamp,
+                    "type": "response_item",
+                    "payload": {
+                        "type": "function_call_output",
+                        "call_id": call_id,
+                        "output": "noop\n",
+                    },
+                },
+            ]
+        )
     path.write_text(
         "\n".join(json.dumps(record) for record in records) + "\n",
         encoding="utf-8",
