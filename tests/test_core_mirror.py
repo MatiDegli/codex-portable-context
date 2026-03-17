@@ -45,6 +45,7 @@ def test_export_mirror_writes_contract_files_and_reuses_state(tmp_path: Path) ->
     assert second.reused_count == 1
     assert first.session_count == 1
     assert metadata["provider"] == "codex"
+    assert metadata["provider_session_id"] == session_id
     assert metadata["session_id"] == session_id
     assert metadata["source_file"] == str(session_path.resolve())
     assert metadata["markdown_relpath"] == f"sessions/{session_id}.md"
@@ -58,6 +59,7 @@ def test_export_mirror_writes_contract_files_and_reuses_state(tmp_path: Path) ->
     assert state_path.is_file()
     assert index_entries[0]["session_id"] == session_id
     assert index_entries[0]["provider"] == "codex"
+    assert index_entries[0]["provider_session_id"] == session_id
     assert index_entries[0]["reader_relpath"] == f"reader/{session_id}.html"
     landing_text = landing_path.read_text(encoding="utf-8")
     reader_index_text = reader_index_path.read_text(encoding="utf-8")

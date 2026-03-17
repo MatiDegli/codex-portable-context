@@ -122,7 +122,6 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
 
         metadata_entry = _render_session_export(
             parsed=parsed,
-            provider_id=provider.provider_id,
             thread_name=thread_name,
             updated_at=updated_at,
             layout=layout,
@@ -187,7 +186,6 @@ def _prepare_layout(layout: Any) -> None:
 def _render_session_export(
     *,
     parsed: ParsedSession,
-    provider_id: str,
     thread_name: str | None,
     updated_at: str | None,
     layout: Any,
@@ -197,7 +195,8 @@ def _render_session_export(
     title = derive_session_title(parsed, thread_name)
     summary = build_summary(parsed)
     metadata_entry = {
-        "provider": provider_id,
+        "provider": parsed.provider,
+        "provider_session_id": parsed.provider_session_id,
         "session_id": parsed.session_id,
         "title": title,
         "export_profile": config.export_profile,

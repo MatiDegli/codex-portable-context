@@ -301,6 +301,7 @@ def _build_handoff_payload(
     return {
         "handoff_schema_version": 1,
         "provider": metadata.get("provider") or "codex",
+        "provider_session_id": metadata.get("provider_session_id"),
         "generated_at": _iso_now(),
         "session_id": metadata.get("session_id"),
         "title": metadata.get("title"),

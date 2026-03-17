@@ -5,10 +5,12 @@ from codex_portable_context.providers import get_provider_adapter, registered_pr
 
 def test_provider_registry_exposes_codex_adapter() -> None:
     adapter = get_provider_adapter("codex")
+    capabilities = adapter.capabilities()
 
     assert adapter.provider_id == "codex"
     assert "codex" in registered_provider_ids()
-    assert adapter.capabilities()["supports_tools"] is True
+    assert capabilities.supports_tools is True
+    assert capabilities.supports_handoff_source_enrichment is True
 
 
 def test_codex_adapter_filters_rollout_session_files(tmp_path: Path) -> None:

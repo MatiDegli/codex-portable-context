@@ -102,6 +102,7 @@ At least one usable timestamp field should also be present:
 
 These fields are useful and should be preserved when available, but may be `null`:
 
+- `provider_session_id`
 - `thread_name`
 - `updated_at`
 - `session_timestamp`
@@ -152,6 +153,7 @@ The metadata file should carry the same stable fields as the index entry:
 
 These fields should remain compatible when available:
 
+- `provider_session_id`
 - `thread_name`
 - `updated_at`
 - `session_timestamp`

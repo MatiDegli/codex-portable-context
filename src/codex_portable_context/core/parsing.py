@@ -1,4 +1,4 @@
-"""Raw Codex session parsing helpers for the Python v2 mirror exporter."""
+"""Raw session parsing helpers for the Python v2 mirror exporter."""
 
 from __future__ import annotations
 
@@ -47,8 +47,10 @@ class RenderBlock:
 
 @dataclass(slots=True)
 class ParsedSession:
-    """Structured representation of one raw Codex session file."""
+    """Structured representation of one raw provider session file."""
 
+    provider: str
+    provider_session_id: str
     source_file: Path
     source_relpath: str
     session_id: str
@@ -100,8 +102,13 @@ def load_source_session_index(codex_home: Path) -> dict[str, JsonObject]:
     return index_entries
 
 
-def parse_session_file(path: Path, source_dir: Path) -> ParsedSession:
-    """Parse one raw Codex session file into structured derived data."""
+def parse_session_file(
+    path: Path,
+    source_dir: Path,
+    *,
+    provider_id: str = "codex",
+) -> ParsedSession:
+    """Parse one raw provider session file into structured derived data."""
 
     records = load_jsonl_objects(path)
     session_meta: JsonObject = {}
@@ -223,6 +230,8 @@ def parse_session_file(path: Path, source_dir: Path) -> ParsedSession:
     )
 
     return ParsedSession(
+        provider=provider_id,
+        provider_session_id=session_id,
         source_file=path.resolve(),
         source_relpath=source_relpath(path, source_dir),
         session_id=session_id,
