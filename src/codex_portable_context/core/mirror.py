@@ -75,21 +75,21 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
 
     for session_file in provider.iter_session_files(config.source_dir):
         parsed = provider.parse_session_file(session_file, config.source_dir)
-        session_hints = provider.session_hints(
+        descriptor = provider.describe_session(
             parsed=parsed,
             source_context=source_context,
             session_file=session_file,
         )
-        thread_name = session_hints.thread_name
-        updated_at = session_hints.updated_at
-        source_relpath = parsed.source_relpath
+        thread_name = descriptor.thread_name
+        updated_at = descriptor.updated_at
+        source_relpath = descriptor.source_relpath
         seen_relpaths.add(source_relpath)
 
-        metadata_relpath = layout.metadata_relpath(parsed.session_id)
-        markdown_relpath = layout.markdown_relpath(parsed.session_id)
+        metadata_relpath = layout.metadata_relpath(descriptor.session_id)
+        markdown_relpath = layout.markdown_relpath(descriptor.session_id)
         signature = build_input_signature(
             source_file=session_file,
-            session_id=parsed.session_id,
+            session_id=descriptor.session_id,
             thread_name=thread_name,
             updated_at=updated_at,
             redact=config.redact,
@@ -108,17 +108,17 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
             and previous.input_signature == signature
             and metadata_path.is_file()
             and markdown_path.is_file()
-            and layout.reader_path(parsed.session_id).is_file()
+            and layout.reader_path(descriptor.session_id).is_file()
         ):
             index_entries.append(_load_json(metadata_path))
             next_state.append(
                 StateRecord(
                     source_relpath=source_relpath,
                     input_signature=signature,
-                    session_id=parsed.session_id,
+                    session_id=descriptor.session_id,
                     metadata_relpath=metadata_relpath,
                     markdown_relpath=markdown_relpath,
-                    reader_relpath=layout.reader_relpath(parsed.session_id),
+                    reader_relpath=layout.reader_relpath(descriptor.session_id),
                 )
             )
             reused_count += 1
@@ -126,6 +126,7 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
 
         metadata_entry = _render_session_export(
             parsed=parsed,
+            descriptor=descriptor,
             thread_name=thread_name,
             updated_at=updated_at,
             layout=layout,
@@ -137,10 +138,10 @@ def export_mirror(config: MirrorExportConfig) -> MirrorExportResult:
             StateRecord(
                 source_relpath=source_relpath,
                 input_signature=signature,
-                session_id=parsed.session_id,
+                session_id=descriptor.session_id,
                 metadata_relpath=metadata_relpath,
                 markdown_relpath=markdown_relpath,
-                reader_relpath=layout.reader_relpath(parsed.session_id),
+                reader_relpath=layout.reader_relpath(descriptor.session_id),
             )
         )
         rendered_count += 1
@@ -191,6 +192,7 @@ def _prepare_layout(layout: Any) -> None:
 def _render_session_export(
     *,
     parsed: ParsedSession,
+    descriptor: Any,
     thread_name: str | None,
     updated_at: str | None,
     layout: Any,
@@ -201,19 +203,19 @@ def _render_session_export(
     summary = build_summary(parsed)
     exported_at = _iso_now()
     metadata_entry = {
-        "provider": parsed.provider,
-        "provider_session_id": parsed.provider_session_id,
-        "session_id": parsed.session_id,
+        "provider": descriptor.provider,
+        "provider_session_id": descriptor.provider_session_id,
+        "session_id": descriptor.session_id,
         "title": title,
         "export_profile": config.export_profile,
         "thread_name": thread_name,
         "exported_at": exported_at,
         "updated_at": updated_at,
-        "source_file": str(parsed.source_file),
-        "source_relpath": parsed.source_relpath,
-        "metadata_relpath": layout.metadata_relpath(parsed.session_id),
-        "markdown_relpath": layout.markdown_relpath(parsed.session_id),
-        "reader_relpath": layout.reader_relpath(parsed.session_id),
+        "source_file": str(descriptor.source_file),
+        "source_relpath": descriptor.source_relpath,
+        "metadata_relpath": layout.metadata_relpath(descriptor.session_id),
+        "markdown_relpath": layout.markdown_relpath(descriptor.session_id),
+        "reader_relpath": layout.reader_relpath(descriptor.session_id),
         "session_timestamp": parsed.session_timestamp,
         "cwd": parsed.cwd,
         "originator": parsed.originator,
@@ -274,9 +276,9 @@ def _render_session_export(
         final_metadata = json.dumps(metadata_entry, indent=2, ensure_ascii=False) + "\n"
         final_markdown = markdown_text
 
-    metadata_path = layout.metadata_path(parsed.session_id)
-    markdown_path = layout.markdown_path(parsed.session_id)
-    reader_path = layout.reader_path(parsed.session_id)
+    metadata_path = layout.metadata_path(descriptor.session_id)
+    markdown_path = layout.markdown_path(descriptor.session_id)
+    reader_path = layout.reader_path(descriptor.session_id)
     metadata_path.write_text(final_metadata, encoding="utf-8")
     markdown_path.write_text(final_markdown, encoding="utf-8")
     written_metadata = _load_json(metadata_path)

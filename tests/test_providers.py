@@ -43,10 +43,7 @@ def test_codex_adapter_filters_rollout_session_files(tmp_path: Path) -> None:
     assert [path.name for path in adapter.iter_session_files(source_dir)] == [included.name]
 
 
-def test_codex_adapter_builds_source_context_from_session_index(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_codex_adapter_builds_source_context_from_session_index(tmp_path: Path) -> None:
     home_dir = tmp_path / "codex-home"
     home_dir.mkdir()
     session_index = home_dir / "session_index.jsonl"
@@ -70,7 +67,9 @@ def test_codex_adapter_builds_source_context_from_session_index(
     }
 
 
-def test_codex_adapter_session_hints_use_source_context_and_file_timestamp(tmp_path: Path) -> None:
+def test_codex_adapter_describes_session_with_source_context_and_file_timestamp(
+    tmp_path: Path,
+) -> None:
     session_file = tmp_path / "rollout-2026-03-16T10-00-00-session.jsonl"
     session_file.write_text("", encoding="utf-8")
     adapter = get_provider_adapter("codex")
@@ -100,7 +99,7 @@ def test_codex_adapter_session_hints_use_source_context_and_file_timestamp(tmp_p
         notable_event_count=0,
     )
 
-    hints = adapter.session_hints(
+    descriptor = adapter.describe_session(
         parsed=parsed,
         source_context=ProviderSourceContext(
             native_index_by_session_id={
@@ -113,5 +112,10 @@ def test_codex_adapter_session_hints_use_source_context_and_file_timestamp(tmp_p
         session_file=session_file,
     )
 
-    assert hints.thread_name == "Fixture Session"
-    assert hints.updated_at == "2026-03-16T10:00:06Z"
+    assert descriptor.provider == "codex"
+    assert descriptor.provider_session_id == "session-1234"
+    assert descriptor.session_id == "session-1234"
+    assert descriptor.source_file == session_file
+    assert descriptor.source_relpath == parsed.source_relpath
+    assert descriptor.thread_name == "Fixture Session"
+    assert descriptor.updated_at == "2026-03-16T10:00:06Z"

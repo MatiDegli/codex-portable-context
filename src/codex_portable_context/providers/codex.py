@@ -14,7 +14,7 @@ from codex_portable_context.core.parsing import (
 )
 from codex_portable_context.providers.base import (
     ProviderCapabilities,
-    ProviderSessionHints,
+    ProviderSessionDescriptor,
     ProviderSourceContext,
 )
 
@@ -45,18 +45,26 @@ class CodexSessionAdapter:
             native_index_by_session_id=load_source_session_index(home_dir)
         )
 
-    def session_hints(
+    def describe_session(
         self,
         *,
         parsed: ParsedSession,
         source_context: ProviderSourceContext,
         session_file: Path,
-    ) -> ProviderSessionHints:
+    ) -> ProviderSessionDescriptor:
         source_index = source_context.native_index_by_session_id or {}
         source_meta = source_index.get(parsed.session_id, {})
         thread_name = _string_value(source_meta.get("thread_name"))
         updated_at = _string_value(source_meta.get("updated_at")) or _file_updated_at(session_file)
-        return ProviderSessionHints(thread_name=thread_name, updated_at=updated_at)
+        return ProviderSessionDescriptor(
+            provider=parsed.provider,
+            provider_session_id=parsed.provider_session_id,
+            session_id=parsed.session_id,
+            source_file=parsed.source_file,
+            source_relpath=parsed.source_relpath,
+            thread_name=thread_name,
+            updated_at=updated_at,
+        )
 
     def parse_session_file(self, path: Path, source_dir: Path) -> ParsedSession:
         return parse_session_file(path, source_dir, provider_id=self.provider_id)
