@@ -86,3 +86,16 @@ Why:
 
 - this gives Linux and Windows users one coherent command model without adding heavy packaging machinery
 - it keeps the project easy to understand for a solo developer while still feeling like a serious Python-first tool
+
+## 2026-03-17 - VS Code extension kept as a thin frontend
+
+Decision:
+
+- keep the Python CLI as the system of record
+- design any future VS Code extension as a thin orchestration layer
+- do not duplicate mirror or handoff logic in TypeScript
+
+Why:
+
+- the current architecture already gives the project a cross-platform, editor-independent core
+- a thin extension can improve developer UX without reintroducing a second implementation path

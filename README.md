@@ -239,6 +239,18 @@ That means:
 
 The product thesis did not change. The tool still builds a derived, read-only mirror and keeps raw Codex state untouched.
 
+## VS Code Integration Direction
+
+VS Code integration is planned as a thin UX layer on top of the Python CLI, not as a second product implementation.
+
+That means:
+
+- Python remains the source of truth for mirror, reader, handoff, and artifact logic
+- the future extension should only orchestrate the existing CLI and open generated artifacts
+- the project remains fully usable outside VS Code
+
+See [docs/vscode-extension-strategy.md](docs/vscode-extension-strategy.md).
+
 ## Bootstrap and Validation
 
 Canonical bootstrap path:
