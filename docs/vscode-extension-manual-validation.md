@@ -85,7 +85,7 @@ Use the included launch configuration:
 
 - `Run Codex Portable Context Extension`
 
-This opens an Extension Development Host without changing the core repo layout.
+This opens an Extension Development Host with the extension folder itself as the workspace, so the workspace-local `.vscode/settings.json` is available to the extension during the test run.
 
 ## Validation Checklist
 

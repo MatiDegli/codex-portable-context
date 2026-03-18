@@ -57,6 +57,8 @@ The extension folder also includes a minimal launch configuration for running an
 
 - `.vscode/launch.json`
 
+That launch config opens the extension folder itself as the host workspace, so the workspace-local `.vscode/settings.json` is actually visible to the running extension.
+
 Recommended local bootstrap:
 
 - Linux:
