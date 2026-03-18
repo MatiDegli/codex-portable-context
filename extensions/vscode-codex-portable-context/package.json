@@ -5,6 +5,10 @@
   "description": "Thin VS Code frontend for the codex-portable-context Python CLI.",
   "version": "0.1.0",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MatiDegli/codex-portable-context.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
