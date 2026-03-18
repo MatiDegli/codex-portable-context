@@ -9,7 +9,7 @@ This repo keeps product and implementation documentation here, grouped by purpos
 - `continuity/`
   - handoff bundles, continuity guardrails, continuity bundle, Linux-to-Linux and Linux-to-Windows continuity guides
 - `integrations/`
-  - VS Code integration docs, CLI integration contracts, MCP bridge design
+  - VS Code integration docs, CLI integration contracts, MCP bridge design, and MCP repo-boundary notes
 - `providers/`
   - multi-provider strategy, provider guardrails, active provider briefs
 - `validation/`

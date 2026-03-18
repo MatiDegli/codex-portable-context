@@ -383,3 +383,17 @@ Why:
 - the repo should read as an implementation and product repo, not as a control plane
 - active contracts, integrations, continuity docs, and provider strategy are easier to navigate when grouped by role
 - historical traceability still matters, but it should stop competing visually with canonical operating docs
+
+## 2026-03-18 - Future MCP orchestration should split into a dedicated repo
+
+Decision:
+
+- keep `codex-portable-context` focused on mirrors, handoffs, readers, and stable local CLI contracts
+- treat the current in-repo MCP code as a transitional local bridge only
+- move any separately published MCP/orchestration product into its own repo once the work goes beyond artifact-facing local bridge behavior
+
+Why:
+
+- a published orchestration tool is a different product than a read-only artifact core
+- this repo should not drift back into a control plane
+- thread-oriented control for Codex Extension or Codex App, if explored later, deserves its own boundary and risk posture

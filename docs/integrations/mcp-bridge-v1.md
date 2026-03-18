@@ -6,6 +6,21 @@ Define the first viable bridge layer that lets external runtimes such as OpenCla
 
 This is a design note, not a claim that the bridge exists yet.
 
+## Positioning Update
+
+This document describes the narrow local bridge shape that still fits inside `codex-portable-context`.
+
+If the product direction expands into:
+
+- OpenClaw-facing runtime orchestration
+- communication with Codex Extension threads
+- communication with Codex App threads
+- a separately published MCP product
+
+that work should move into a dedicated repo rather than keep expanding this repo's responsibilities.
+
+See [mcp-repo-split.md](mcp-repo-split.md).
+
 ## Core Decision
 
 If this repo adds an interoperability layer, it should be:
