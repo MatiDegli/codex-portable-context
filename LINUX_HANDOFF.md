@@ -4,6 +4,24 @@ This file is the root handoff for opening the next chat in a native Linux clone 
 
 Use it as the first file to read.
 
+## PM Start Here
+
+The PM should continue from this branch:
+
+- `codex/linux-migration-checkpoint`
+
+Recommended Linux start sequence:
+
+1. clone the repo on Linux
+2. checkout `codex/linux-migration-checkpoint`
+3. open a new repo-local chat from that Linux clone
+4. have that chat read this file first
+5. then have that chat read the files listed in `Read These First`
+6. bootstrap the native Linux environment
+7. run the Linux validation block before planning any new implementation slice
+
+If Linux validation passes, continue from the current checkpoint rather than reopening older MCP slices.
+
 ## Current State
 
 The repo is now at a migration-readiness checkpoint.
@@ -68,9 +86,10 @@ Do not open the real Codex launch hook immediately.
 First:
 
 1. clone the repo cleanly on Linux
-2. recreate the Python environment natively
-3. rerun the MCP bridge, task-state, and control-helper validations
-4. confirm the workflow still looks the same in Linux
+2. checkout `codex/linux-migration-checkpoint`
+3. recreate the Python environment natively
+4. rerun the MCP bridge, task-state, and control-helper validations
+5. confirm the workflow still looks the same in Linux
 
 Only after that decide whether to start the first real Codex CLI launch hook.
 
@@ -96,6 +115,7 @@ The next chat in the Linux clone should continue with this role:
 - treat `workflow/` artifacts as the live source of truth
 - avoid reopening already-closed slices unless Linux validation proves drift
 - keep the next implementation bounded and auditable
+- assume the PM has already selected `codex/linux-migration-checkpoint` as the continuation branch
 
 ## Migration Decision
 
