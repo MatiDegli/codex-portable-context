@@ -1,5 +1,6 @@
 {
   "name": "codex-portable-context-vscode",
+  "publisher": "matidegli",
   "displayName": "Codex Portable Context",
   "description": "Thin VS Code frontend for the codex-portable-context Python CLI.",
   "version": "0.1.0",

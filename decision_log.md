@@ -272,3 +272,17 @@ Why:
 - the current risk is integration correctness, not missing UI chrome
 - the project still wants a thin frontend over the Python core
 - manual validation is the fastest way to catch path-resolution and setup issues without expanding scope
+
+## 2026-03-18 - Local `.vsix` install should come before Marketplace publication
+
+Decision:
+
+- prepare the extension for local `.vsix` packaging and install before attempting Marketplace publication
+- keep the packaging story lightweight and local-first
+- treat Marketplace publication as a later release/distribution decision, not as the next engineering milestone
+
+Why:
+
+- the extension has now passed a first real manual validation pass
+- local `.vsix` install is the smallest realistic distribution step
+- this keeps scope controlled while still making the extension meaningfully installable

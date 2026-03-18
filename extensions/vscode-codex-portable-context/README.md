@@ -53,6 +53,10 @@ For a first real manual pass in VS Code, see:
 
 - [vscode-extension-manual-validation.md](../../docs/vscode-extension-manual-validation.md)
 
+For local `.vsix` packaging and installation after that manual pass, see:
+
+- [vscode-extension-local-install.md](../../docs/vscode-extension-local-install.md)
+
 The extension folder also includes a minimal launch configuration for running an Extension Development Host:
 
 - `.vscode/launch.json`

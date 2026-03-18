@@ -263,6 +263,7 @@ For machine-readable session selection, see the small integration contract for [
 
 An initial thin extension skeleton also lives under [`extensions/vscode-codex-portable-context/`](extensions/vscode-codex-portable-context/README.md). It is intentionally a frontend over the Python CLI, not a second implementation.
 For the first practical validation pass, see [`docs/vscode-extension-manual-validation.md`](docs/vscode-extension-manual-validation.md).
+For local `.vsix` packaging and install, see [`docs/vscode-extension-local-install.md`](docs/vscode-extension-local-install.md).
 
 The planned multi-provider direction is: Codex first, provider abstraction next, Claude Code next, Antigravity next, and only later experimental continuity on top of normalized artifacts. See [docs/multi-provider-strategy.md](docs/multi-provider-strategy.md).
 
