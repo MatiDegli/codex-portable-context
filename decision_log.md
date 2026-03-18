@@ -258,3 +258,17 @@ Why:
 - this keeps the extension thin and orchestration-focused
 - it avoids accidental CLI coupling through undocumented assumptions
 - it improves extension-readiness without moving logic out of Python
+
+## 2026-03-17 - VS Code extension readiness should be validated manually before more UI work
+
+Decision:
+
+- prefer a manual Extension Development Host validation pass before adding more extension UI
+- document the workspace setup, command checklist, and negative checks explicitly
+- keep launch support minimal and local to the extension skeleton
+
+Why:
+
+- the current risk is integration correctness, not missing UI chrome
+- the project still wants a thin frontend over the Python core
+- manual validation is the fastest way to catch path-resolution and setup issues without expanding scope

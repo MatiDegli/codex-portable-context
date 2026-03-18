@@ -49,6 +49,14 @@ Recommended path during development:
 - bootstrap the local `.venv`
 - use the extension commands against the same workspace
 
+For a first real manual pass in VS Code, see:
+
+- [vscode-extension-manual-validation.md](../../docs/vscode-extension-manual-validation.md)
+
+The extension folder also includes a minimal launch configuration for running an Extension Development Host:
+
+- `.vscode/launch.json`
+
 Recommended local bootstrap:
 
 - Linux:
