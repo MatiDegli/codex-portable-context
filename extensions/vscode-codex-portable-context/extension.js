@@ -273,9 +273,11 @@ function resolveInvocation(kind, workingDirectory) {
 
   const configuredDir = getConfig().get("commandDirectory", "").trim();
   if (configuredDir) {
-    const configuredCommand = resolveCommandFromDirectory(spec.command, resolvePath(configuredDir, workingDirectory));
-    if (configuredCommand) {
-      return { command: configuredCommand, args: [] };
+    for (const directory of resolveConfiguredPathCandidates(configuredDir, workingDirectory)) {
+      const configuredCommand = resolveCommandFromDirectory(spec.command, directory);
+      if (configuredCommand) {
+        return { command: configuredCommand, args: [] };
+      }
     }
   }
 
@@ -286,10 +288,14 @@ function resolveInvocation(kind, workingDirectory) {
 
   const configuredPython = getConfig().get("pythonPath", "").trim();
   if (configuredPython) {
-    return {
-      command: resolvePath(configuredPython, workingDirectory),
-      args: ["-m", spec.module],
-    };
+    for (const candidate of resolveConfiguredPathCandidates(configuredPython, workingDirectory)) {
+      if (fs.existsSync(candidate)) {
+        return {
+          command: candidate,
+          args: ["-m", spec.module],
+        };
+      }
+    }
   }
 
   const localPython = localPythonInterpreter(workingDirectory);
@@ -301,6 +307,28 @@ function resolveInvocation(kind, workingDirectory) {
   }
 
   return { command: spec.command, args: [] };
+}
+
+function resolveConfiguredPathCandidates(value, workingDirectory) {
+  if (!value) {
+    return [];
+  }
+  if (path.isAbsolute(value)) {
+    return [value];
+  }
+
+  const candidates = [];
+  const workspaceRoot = fallbackWorkspaceRoot();
+  if (workspaceRoot) {
+    candidates.push(path.resolve(workspaceRoot, value));
+  }
+  if (workingDirectory) {
+    const resolved = path.resolve(workingDirectory, value);
+    if (!candidates.includes(resolved)) {
+      candidates.push(resolved);
+    }
+  }
+  return candidates.length > 0 ? candidates : [value];
 }
 
 function resolveCommandFromDirectory(commandName, directory) {

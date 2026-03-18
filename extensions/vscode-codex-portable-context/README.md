@@ -67,6 +67,13 @@ Recommended local bootstrap:
   - `py -3.13 -m venv .venv`
   - `.venv\Scripts\python -m pip install -e ".[dev]"`
 
+Configured `commandDirectory` and `pythonPath` are resolved flexibly:
+
+- first relative to the extension workspace root
+- then relative to `codexPortableContext.workingDirectory`
+
+That means both workspace-relative values like `../../.venv/bin` and repo-relative values like `./.venv/bin` can work, depending on how you launch the Extension Development Host.
+
 ## Settings
 
 - `codexPortableContext.workingDirectory`

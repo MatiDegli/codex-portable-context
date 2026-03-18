@@ -79,6 +79,27 @@ or on Windows:
 }
 ```
 
+The extension now accepts these configured tool paths relative to either:
+
+- the extension workspace root
+- the resolved `workingDirectory`
+
+So both of these styles are valid on Linux when `workingDirectory` points at the repo root:
+
+```json
+{
+  "codexPortableContext.commandDirectory": "../../.venv/bin"
+}
+```
+
+or:
+
+```json
+{
+  "codexPortableContext.commandDirectory": "./.venv/bin"
+}
+```
+
 ## Launching The Extension
 
 Use the included launch configuration:
