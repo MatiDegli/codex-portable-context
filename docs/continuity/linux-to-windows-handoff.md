@@ -12,7 +12,7 @@ This is the expected workflow for the current Python-first implementation.
 
 It is aligned with the existing Windows-native validation plan, but it should still be treated as a practical handoff guide until full native Windows validation is completed and recorded.
 
-See [windows-native-validation.md](windows-native-validation.md) for the platform validation checklist.
+See [../validation/windows-native-validation.md](../validation/windows-native-validation.md) for the platform validation checklist.
 
 ## Recommendation
 

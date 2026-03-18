@@ -1,4 +1,4 @@
-# External Planning Location
+# Transition Note: External OpenClaw Topology
 
 The live OpenClaw multi-agent topology for `codex-portable-context` now lives in `Portfolio-OS`.
 

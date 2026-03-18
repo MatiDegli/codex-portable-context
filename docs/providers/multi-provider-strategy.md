@@ -295,7 +295,7 @@ Success means:
 
 Reference brief:
 
-- [Antigravity Adapter Brief](./antigravity-adapter-brief.md)
+- [Antigravity Adapter Brief](../history/antigravity-adapter-brief.md)
 - [Provider Policy Guardrails](./provider-policy-guardrails.md)
 
 Current status:

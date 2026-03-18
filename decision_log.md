@@ -369,3 +369,17 @@ Why:
 - `Portfolio-OS` is the structural repo meant to coordinate existing and future serious projects
 - keeping workflow state there avoids turning each implementation repo into its own competing control plane
 - this preserves a cleaner separation between portfolio governance and product implementation
+
+## 2026-03-18 - Docs reorganized around product-facing categories
+
+Decision:
+
+- group active documentation by product purpose rather than keeping one flat `docs/` directory
+- move migration-era and checkpoint material under `docs/history/`
+- move short-lived transition notes under `docs/handoffs/`
+
+Why:
+
+- the repo should read as an implementation and product repo, not as a control plane
+- active contracts, integrations, continuity docs, and provider strategy are easier to navigate when grouped by role
+- historical traceability still matters, but it should stop competing visually with canonical operating docs

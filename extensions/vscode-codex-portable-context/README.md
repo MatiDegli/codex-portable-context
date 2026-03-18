@@ -40,8 +40,8 @@ The current `Export Mirror` command already consumes `codex-session-mirror --jso
 
 See:
 
-- [list-json-contract.md](../../docs/list-json-contract.md)
-- [extension-invocation-contract.md](../../docs/extension-invocation-contract.md)
+- [list-json-contract.md](../../docs/integrations/list-json-contract.md)
+- [extension-invocation-contract.md](../../docs/integrations/extension-invocation-contract.md)
 
 Recommended path during development:
 
@@ -51,7 +51,7 @@ Recommended path during development:
 
 For a first real manual pass in VS Code, see:
 
-- [vscode-extension-manual-validation.md](../../docs/vscode-extension-manual-validation.md)
+- [vscode-extension-manual-validation.md](../../docs/integrations/vscode-extension-manual-validation.md)
 
 The extension folder also includes a minimal launch configuration for running an Extension Development Host:
 

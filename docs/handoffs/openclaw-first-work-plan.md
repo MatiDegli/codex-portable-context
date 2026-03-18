@@ -1,4 +1,4 @@
-# External Planning Location
+# Transition Note: External OpenClaw Work Plan
 
 The live OpenClaw work plan for `codex-portable-context` now lives in `Portfolio-OS`.
 

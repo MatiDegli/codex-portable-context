@@ -1,6 +1,6 @@
-# Linux Handoff
+# Linux Migration Handoff
 
-This file is the root handoff for opening the next chat in a native Linux clone of this repo.
+This is a temporary transition handoff for opening the next chat in a native Linux clone of this repo.
 
 Use it as the first file to read.
 
@@ -44,8 +44,8 @@ What does not exist yet:
 1. `Portfolio-OS/workflow/projects/codex-portable-context/workflow_current.md`
 2. `Portfolio-OS/workflow/projects/codex-portable-context/outputs/MCP-CONTROL-003_W1.md`
 3. `Portfolio-OS/workflow/projects/codex-portable-context/review/MCP-CONTROL-003.md`
-4. `docs/mcp-bridge-v1.md`
-5. `docs/openclaw-first-work-plan.md`
+4. `docs/integrations/mcp-bridge-v1.md`
+5. `docs/handoffs/openclaw-first-work-plan.md`
 6. `decision_log.md`
 7. `conventions.md`
 

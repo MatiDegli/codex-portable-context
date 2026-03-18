@@ -1,4 +1,4 @@
-# External Workflow Location
+# Transition Note: External Workflow Location
 
 The live workflow for `codex-portable-context` no longer lives in this repo.
 

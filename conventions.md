@@ -20,7 +20,7 @@ If guidance conflicts, stop and resolve it explicitly.
 - Mirror safety:
   The project remains local-first and read-only with respect to Codex source state. No raw sync of `~/.codex`, no write-back, no credential sync.
 - Contract:
-  Follow [docs/mirror-contract.md](/home/matidegli/Projects/codex-sync/docs/mirror-contract.md) before changing derived mirror output.
+  Follow [docs/architecture/mirror-contract.md](/home/matidegli/Projects/codex-sync/docs/architecture/mirror-contract.md) before changing derived mirror output.
 - Release:
   Do not treat work as release-ready unless the documented validation path passes.
 

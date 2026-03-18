@@ -99,7 +99,7 @@ Planned v2 direction:
 See:
 
 - [mirror-contract.md](mirror-contract.md)
-- [v2-python-migration.md](v2-python-migration.md)
+- [../history/v2-python-migration.md](../history/v2-python-migration.md)
 
 ## Non-Goals
 

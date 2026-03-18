@@ -8,7 +8,7 @@ Current provider status:
 - `claude-code`: conservative internal adapter path under fixture-backed development
 - `antigravity`: policy-gated, manual-export compatibility only unless an official export/API path is confirmed
 
-Provider guardrails are documented in [docs/provider-policy-guardrails.md](docs/provider-policy-guardrails.md).
+Provider guardrails are documented in [docs/providers/provider-policy-guardrails.md](docs/providers/provider-policy-guardrails.md).
 
 ## What It Does
 
@@ -163,7 +163,7 @@ Expected Linux-to-Windows handoff workflow:
 rsync -a ./out/ /run/media/$USER/TRANSFER/codex-portable-context/out/
 ```
 
-Then open `index.html` or the generated handoff bundle on the Windows machine. See [docs/linux-to-windows-handoff.md](docs/linux-to-windows-handoff.md).
+Then open `index.html` or the generated handoff bundle on the Windows machine. See [docs/continuity/linux-to-windows-handoff.md](docs/continuity/linux-to-windows-handoff.md).
 
 Open the browser reader:
 
@@ -257,18 +257,18 @@ That means:
 - the future extension should only orchestrate the existing CLI and open generated artifacts
 - the project remains fully usable outside VS Code
 
-See [docs/vscode-extension-strategy.md](docs/vscode-extension-strategy.md).
+See [docs/integrations/vscode-extension-strategy.md](docs/integrations/vscode-extension-strategy.md).
 
-For machine-readable session selection, see the small integration contract for [`codex-session-list --json`](docs/list-json-contract.md). For the thin VS Code frontend surface, see the extension-facing CLI contract in [`docs/extension-invocation-contract.md`](docs/extension-invocation-contract.md).
+For machine-readable session selection, see the small integration contract for [`codex-session-list --json`](docs/integrations/list-json-contract.md). For the thin VS Code frontend surface, see the extension-facing CLI contract in [`docs/integrations/extension-invocation-contract.md`](docs/integrations/extension-invocation-contract.md).
 
 An initial thin extension skeleton also lives under [`extensions/vscode-codex-portable-context/`](extensions/vscode-codex-portable-context/README.md). It is intentionally a frontend over the Python CLI, not a second implementation.
-For the first practical validation pass, see [`docs/vscode-extension-manual-validation.md`](docs/vscode-extension-manual-validation.md).
+For the first practical validation pass, see [`docs/integrations/vscode-extension-manual-validation.md`](docs/integrations/vscode-extension-manual-validation.md).
 
-The planned multi-provider direction is: Codex first, provider abstraction next, Claude Code next, Antigravity next, and only later experimental continuity on top of normalized artifacts. See [docs/multi-provider-strategy.md](docs/multi-provider-strategy.md).
+The planned multi-provider direction is: Codex first, provider abstraction next, Claude Code next, Antigravity next, and only later experimental continuity on top of normalized artifacts. See [docs/providers/multi-provider-strategy.md](docs/providers/multi-provider-strategy.md).
 
 The first internal step of that direction is now in place: Codex is being treated as the first provider adapter behind the Python core, without changing the current CLI UX.
 
-Claude Code now also has a conservative internal adapter path behind the same core, but it remains intentionally fixture-backed and does not yet imply release-ready Claude Code support. See [docs/claude-code-adapter-brief.md](docs/claude-code-adapter-brief.md).
+Claude Code now also has a conservative internal adapter path behind the same core, but it remains intentionally fixture-backed and does not yet imply release-ready Claude Code support. See [docs/providers/claude-code-adapter-brief.md](docs/providers/claude-code-adapter-brief.md).
 
 ## Bootstrap and Validation
 
@@ -299,7 +299,7 @@ After the editable install, the recommended commands are:
 .venv/bin/codex-session-latest --help
 ```
 
-For the native Windows setup checklist and the first concrete validation record, see [docs/windows-native-validation.md](docs/windows-native-validation.md).
+For the native Windows setup checklist and the first concrete validation record, see [docs/validation/windows-native-validation.md](docs/validation/windows-native-validation.md).
 
 ## Python v2 Baseline
 
@@ -360,7 +360,7 @@ What is not being claimed yet:
 - this repo is not claiming completed Windows-native coverage across all workflows
 - the Bash wrappers are not the cross-platform path
 
-For the concrete Windows-native setup checklist and validation record, see [docs/windows-native-validation.md](docs/windows-native-validation.md).
+For the concrete Windows-native setup checklist and validation record, see [docs/validation/windows-native-validation.md](docs/validation/windows-native-validation.md).
 
 ## Export Quality
 
@@ -411,7 +411,7 @@ Do not treat these as transport targets:
 - `~/.codex/tmp/`
 - `~/.codex/shell_snapshots/`
 
-For transport recipes, see [docs/transport.md](docs/transport.md). The documented approaches are:
+For transport recipes, see [docs/architecture/transport.md](docs/architecture/transport.md). The documented approaches are:
 
 - Syncthing, with a bias toward one writer and a read-oriented copy
 - one-way `rsync`, for explicit directional control
@@ -465,15 +465,22 @@ For older mirror outputs, path resolution can fall back to:
 
 ## Docs
 
-- [docs/architecture.md](docs/architecture.md)
-- [docs/handoff.md](docs/handoff.md)
-- [docs/linux-to-linux-handoff.md](docs/linux-to-linux-handoff.md)
-- [docs/linux-to-windows-handoff.md](docs/linux-to-windows-handoff.md)
-- [docs/mirror-contract.md](docs/mirror-contract.md)
-- [docs/phase7-parity.md](docs/phase7-parity.md)
-- [docs/python-v2-conventions.md](docs/python-v2-conventions.md)
-- [docs/security.md](docs/security.md)
-- [docs/mvp.md](docs/mvp.md)
-- [docs/transport.md](docs/transport.md)
-- [docs/v2-python-migration.md](docs/v2-python-migration.md)
-- [docs/windows-native-validation.md](docs/windows-native-validation.md)
+Start with [docs/README.md](docs/README.md) for the grouped doc map.
+
+Canonical docs:
+
+- [docs/architecture/architecture.md](docs/architecture/architecture.md)
+- [docs/architecture/mirror-contract.md](docs/architecture/mirror-contract.md)
+- [docs/architecture/security.md](docs/architecture/security.md)
+- [docs/architecture/transport.md](docs/architecture/transport.md)
+- [docs/continuity/handoff.md](docs/continuity/handoff.md)
+- [docs/continuity/linux-to-linux-handoff.md](docs/continuity/linux-to-linux-handoff.md)
+- [docs/continuity/linux-to-windows-handoff.md](docs/continuity/linux-to-windows-handoff.md)
+- [docs/integrations/vscode-extension-strategy.md](docs/integrations/vscode-extension-strategy.md)
+- [docs/providers/multi-provider-strategy.md](docs/providers/multi-provider-strategy.md)
+- [docs/validation/windows-native-validation.md](docs/validation/windows-native-validation.md)
+
+Historical and transition notes remain available under:
+
+- [docs/history/](docs/history)
+- [docs/handoffs/](docs/handoffs)

@@ -308,7 +308,7 @@ Current posture:
 
 - Windows-oriented path handling and redaction rules are covered by tests
 - opener behavior is implemented deliberately for Windows via `os.startfile()`
-- native Windows setup and command validation should follow the explicit checklist in [windows-native-validation.md](windows-native-validation.md)
+- native Windows setup and command validation should follow the explicit checklist in [../validation/windows-native-validation.md](../validation/windows-native-validation.md)
 
 ## Bash Wrapper Recommendation
 
