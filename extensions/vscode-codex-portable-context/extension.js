@@ -5,6 +5,8 @@ const fs = require("fs");
 const path = require("path");
 const vscode = require("vscode");
 
+let extensionBasePath = "";
+
 const CLI_MAP = {
   mirror: {
     command: "codex-session-mirror",
@@ -29,6 +31,7 @@ const CLI_MAP = {
 };
 
 function activate(context) {
+  extensionBasePath = context.extensionPath;
   context.subscriptions.push(
     registerManagedCommand("codexPortableContext.exportMirror", exportMirror),
     registerManagedCommand("codexPortableContext.generateHandoff", generateHandoff),
@@ -270,29 +273,37 @@ function resolveInvocation(kind, workingDirectory) {
   if (!spec) {
     throw new Error(`Unsupported CLI kind: ${kind}`);
   }
+  const attempts = [];
 
   const configuredDir = getConfig().get("commandDirectory", "").trim();
   if (configuredDir) {
     for (const directory of resolveConfiguredPathCandidates(configuredDir, workingDirectory)) {
+      attempts.push(path.join(directory, executableName(spec.command)));
       const configuredCommand = resolveCommandFromDirectory(spec.command, directory);
       if (configuredCommand) {
-        return { command: configuredCommand, args: [] };
+        return { command: configuredCommand, args: [], attempts };
       }
     }
   }
 
-  const localCommand = resolveCommandFromDirectory(spec.command, localScriptsDirectory(workingDirectory));
+  const localScripts = localScriptsDirectory(workingDirectory);
+  if (localScripts) {
+    attempts.push(path.join(localScripts, executableName(spec.command)));
+  }
+  const localCommand = resolveCommandFromDirectory(spec.command, localScripts);
   if (localCommand) {
-    return { command: localCommand, args: [] };
+    return { command: localCommand, args: [], attempts };
   }
 
   const configuredPython = getConfig().get("pythonPath", "").trim();
   if (configuredPython) {
     for (const candidate of resolveConfiguredPathCandidates(configuredPython, workingDirectory)) {
+      attempts.push(`${candidate} -m ${spec.module}`);
       if (fs.existsSync(candidate)) {
         return {
           command: candidate,
           args: ["-m", spec.module],
+          attempts,
         };
       }
     }
@@ -300,13 +311,16 @@ function resolveInvocation(kind, workingDirectory) {
 
   const localPython = localPythonInterpreter(workingDirectory);
   if (localPython) {
+    attempts.push(`${localPython} -m ${spec.module}`);
     return {
       command: localPython,
       args: ["-m", spec.module],
+      attempts,
     };
   }
 
-  return { command: spec.command, args: [] };
+  attempts.push(spec.command);
+  return { command: spec.command, args: [], attempts };
 }
 
 function resolveConfiguredPathCandidates(value, workingDirectory) {
@@ -318,12 +332,8 @@ function resolveConfiguredPathCandidates(value, workingDirectory) {
   }
 
   const candidates = [];
-  const workspaceRoot = fallbackWorkspaceRoot();
-  if (workspaceRoot) {
-    candidates.push(path.resolve(workspaceRoot, value));
-  }
-  if (workingDirectory) {
-    const resolved = path.resolve(workingDirectory, value);
+  for (const baseDirectory of resolutionBaseDirectories(workingDirectory)) {
+    const resolved = path.resolve(baseDirectory, value);
     if (!candidates.includes(resolved)) {
       candidates.push(resolved);
     }
@@ -331,11 +341,30 @@ function resolveConfiguredPathCandidates(value, workingDirectory) {
   return candidates.length > 0 ? candidates : [value];
 }
 
+function resolutionBaseDirectories(workingDirectory) {
+  const directories = [];
+  const workspaceRoot = fallbackWorkspaceRoot();
+  if (workspaceRoot) {
+    directories.push(workspaceRoot);
+  }
+  if (extensionBasePath && !directories.includes(extensionBasePath)) {
+    directories.push(extensionBasePath);
+  }
+  if (workingDirectory && !directories.includes(workingDirectory)) {
+    directories.push(workingDirectory);
+  }
+  return directories;
+}
+
+function executableName(commandName) {
+  return process.platform === "win32" ? `${commandName}.exe` : commandName;
+}
+
 function resolveCommandFromDirectory(commandName, directory) {
   if (!directory) {
     return "";
   }
-  const filename = process.platform === "win32" ? `${commandName}.exe` : commandName;
+  const filename = executableName(commandName);
   const fullPath = path.join(directory, filename);
   return fs.existsSync(fullPath) ? fullPath : "";
 }
@@ -375,11 +404,15 @@ async function runCli(kind, args, workingDirectory) {
         }
 
         if (error.code === "ENOENT") {
+          const attempted = invocation.attempts && invocation.attempts.length
+            ? ` Tried: ${invocation.attempts.join(" | ")}`
+            : "";
           reject(
             new Error(
               [
                 `Could not find a usable ${CLI_MAP[kind].command} invocation.`,
                 "Bootstrap the project environment or configure codexPortableContext.commandDirectory / codexPortableContext.pythonPath.",
+                attempted,
               ].join(" "),
             ),
           );
