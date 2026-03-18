@@ -259,6 +259,22 @@ Why:
 - it avoids accidental CLI coupling through undocumented assumptions
 - it improves extension-readiness without moving logic out of Python
 
+## 2026-03-18 - Any future bridge should stay above the derived mirror and target Codex CLI first
+
+Decision:
+
+- if this repo grows a bridge for external runtimes such as OpenClaw, keep that bridge optional and local-only
+- do not turn the current mirror core into a required daemon, sync engine, or live session backend
+- treat Codex CLI as the first supported control surface for bounded external orchestration
+- do not assume Codex App or VS Code extension threads are stable external backends
+
+Why:
+
+- the current product thesis is still correct: local-first, read-only, derived-artifact centered
+- a bridge can add coordination value without mutating raw Codex state or reintroducing credential-sync behavior
+- Codex CLI is a more defensible integration surface than app-thread internals or extension UI state
+- this preserves one durable Python core while still creating a path toward OpenClaw and MCP-based interoperability
+
 ## 2026-03-17 - VS Code extension readiness should be validated manually before more UI work
 
 Decision:
@@ -272,3 +288,70 @@ Why:
 - the current risk is integration correctness, not missing UI chrome
 - the project still wants a thin frontend over the Python core
 - manual validation is the fastest way to catch path-resolution and setup issues without expanding scope
+
+## 2026-03-18 - OpenClaw pilot should use a coordinator-plus-workers topology
+
+Decision:
+
+- use one OpenClaw coordinator for dispatch and two narrow workers for code scaffold and docs/contracts
+- keep recurring automation disabled for code-writing slices until one manual coordinator-to-worker cycle validates cleanly
+- accept a temporary Windows-venv validation workaround while the WSL2 pilot host remains below the repo's Python 3.13 baseline
+
+Why:
+
+- this keeps OpenClaw aligned with a PM/coordinator role instead of turning it into one unconstrained coding agent
+- narrow worker scopes reduce drift and make the pilot easier to audit
+- the current host mismatch is real, but it should be handled explicitly rather than hidden
+
+## 2026-03-18 - Repo-native workflow surface adopted for MCP work
+
+Decision:
+
+- adopt the standard architect + coordinator + workers workflow directly inside this repo under `workflow/`
+- treat this repo as `Tier 1` for workflow review posture
+- use one shared reviewer/debugger by default for implementation slices that touch MCP trust boundaries or core contracts
+
+Why:
+
+- the MCP direction is now concrete enough that repo-native coordination artifacts are more durable than keeping all operational state in pilot worktrees
+- this keeps the current implementation effort auditable and portable without copying Tuplar's full coordination scale
+- a shared reviewer/debugger preserves quality and security pressure without forcing one dedicated debugger per worker at this repo stage
+
+## 2026-03-18 - The first MCP control path should prefer direct Codex CLI and separate local task state
+
+Decision:
+
+- prefer direct Codex CLI invocation for the first bounded control spike instead of ACP wrapping
+- keep control-task state outside `out/` in a separate local hidden task-state root
+- retain only bounded task metadata and prune terminal task records after `7 days`
+
+Why:
+
+- the first control objective is a small inspectable execution surface, not a second orchestration layer
+- keeping task state out of `out/` preserves the distinction between portable derived artifacts and local operational state
+- bounded retention limits drift and avoids turning task history into a shadow transcript store
+
+## 2026-03-18 - The first control helper surface should exist before any Codex launch hook
+
+Decision:
+
+- expose enqueue, status, and result helpers over local task-state records before adding any real Codex CLI launch hook
+- keep the first control helper surface purely local and record-driven
+
+Why:
+
+- this proves the contract and result surface without mixing in subprocess or runtime failure modes yet
+- it lets OpenClaw and future MCP consumers integrate against stable local state before live execution is introduced
+
+## 2026-03-18 - Native Linux is now the preferred next continuation environment
+
+Decision:
+
+- treat the current repo state as the migration-readiness checkpoint
+- continue the next serious MCP slice from a native Linux clone rather than from the WSL2 pilot host
+
+Why:
+
+- the repo now contains enough workflow, validation, and handoff structure to move without relying on memory
+- the next risk step is the first real Codex launch hook, which is better introduced in the cleaner native Linux environment
+- Linux removes the current WSL2 Python-baseline mismatch and reduces operational drift
