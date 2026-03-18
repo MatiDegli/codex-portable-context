@@ -355,3 +355,17 @@ Why:
 - the repo now contains enough workflow, validation, and handoff structure to move without relying on memory
 - the next risk step is the first real Codex launch hook, which is better introduced in the cleaner native Linux environment
 - Linux removes the current WSL2 Python-baseline mismatch and reduces operational drift
+
+## 2026-03-18 - Live workflow control surface moved to Portfolio-OS
+
+Decision:
+
+- move the live architect + coordinator + workers workflow package out of this repo and into `Portfolio-OS`
+- keep this repo focused on implementation code, tests, technical docs, and thin handoff pointers
+- treat `Portfolio-OS/workflow/projects/codex-portable-context/` as the live source of truth for OpenClaw and MCP coordination state
+
+Why:
+
+- `Portfolio-OS` is the structural repo meant to coordinate existing and future serious projects
+- keeping workflow state there avoids turning each implementation repo into its own competing control plane
+- this preserves a cleaner separation between portfolio governance and product implementation

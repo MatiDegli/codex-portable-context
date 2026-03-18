@@ -31,7 +31,7 @@ What already exists:
 - read-only MCP bridge helpers over derived artifacts
 - local task-state scaffold for bounded control work
 - bounded enqueue/status/result helpers that still do not launch Codex
-- repo-native workflow artifacts under `workflow/`
+- live workflow artifacts now owned by `Portfolio-OS` under `workflow/projects/codex-portable-context/`
 
 What does not exist yet:
 
@@ -41,9 +41,9 @@ What does not exist yet:
 
 ## Read These First
 
-1. `workflow/workflow_current.md`
-2. `workflow/outputs/MCP-CONTROL-003_W1.md`
-3. `workflow/review/MCP-CONTROL-003.md`
+1. `Portfolio-OS/workflow/projects/codex-portable-context/workflow_current.md`
+2. `Portfolio-OS/workflow/projects/codex-portable-context/outputs/MCP-CONTROL-003_W1.md`
+3. `Portfolio-OS/workflow/projects/codex-portable-context/review/MCP-CONTROL-003.md`
 4. `docs/mcp-bridge-v1.md`
 5. `docs/openclaw-first-work-plan.md`
 6. `decision_log.md`
@@ -112,7 +112,7 @@ Constraints for that slice:
 The next chat in the Linux clone should continue with this role:
 
 - preserve the current architect -> coordinator -> worker -> reviewer workflow
-- treat `workflow/` artifacts as the live source of truth
+- treat `Portfolio-OS/workflow/projects/codex-portable-context/` as the live source of truth
 - avoid reopening already-closed slices unless Linux validation proves drift
 - keep the next implementation bounded and auditable
 - assume the PM has already selected `codex/linux-migration-checkpoint` as the continuation branch

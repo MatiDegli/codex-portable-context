@@ -12,7 +12,7 @@ The workflow is no longer just pilot glue.
 
 This repo now has:
 
-- a repo-native workflow surface under `workflow/`
+- a bounded workflow package now owned by `Portfolio-OS` under `workflow/projects/codex-portable-context/`
 - a bounded read-only MCP bridge
 - a bounded local task-state scaffold
 - bounded enqueue/status/result helpers over task-state records
@@ -45,7 +45,7 @@ The Linux continuation is considered aligned only if:
 - Python `3.13+` is used natively
 - the MCP-focused tests pass on Linux
 - `codex-session-mcp --help` works after editable install
-- the repo workflow state still matches `workflow/workflow_current.md`
+- the live workflow state in `Portfolio-OS/workflow/projects/codex-portable-context/workflow_current.md` still matches the repo implementation checkpoint
 - no WSL-only workaround is needed for validation
 
 ## First Post-Migration Decision
