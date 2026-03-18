@@ -27,11 +27,35 @@ The extension looks for the tool in this order:
 4. workspace-local `.venv` Python module fallback
 5. command name on `PATH`
 
+## Extension-Facing CLI Contract
+
+The intended stable integration surface is:
+
+- `codex-session-mirror --json`
+- `codex-session-list --json`
+- `codex-session-open --print`
+- `codex-session-handoff --latest --print`
+
+The current `Export Mirror` command already consumes `codex-session-mirror --json` so it can show a cleaner completion message and open the generated reader index without guessing paths.
+
+See:
+
+- [list-json-contract.md](../../docs/list-json-contract.md)
+- [extension-invocation-contract.md](../../docs/extension-invocation-contract.md)
+
 Recommended path during development:
 
 - open the repo in VS Code
 - bootstrap the local `.venv`
 - use the extension commands against the same workspace
+
+Recommended local bootstrap:
+
+- Linux:
+  - `./scripts/bootstrap-python-v2`
+- Windows PowerShell:
+  - `py -3.13 -m venv .venv`
+  - `.venv\Scripts\python -m pip install -e ".[dev]"`
 
 ## Settings
 

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
+from codex_portable_context.core.contract import HTML_INDEX_FILENAME, LANDING_FILENAME
 from codex_portable_context.core.discovery import default_out_dir
 from codex_portable_context.core.mirror import MirrorExportConfig, export_mirror
 from codex_portable_context.providers import get_provider_adapter
@@ -66,6 +68,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Shortcut for --no-context --no-tools --no-events.",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable export result JSON to stdout.",
+    )
     return parser
 
 
@@ -104,6 +111,23 @@ def main(argv: list[str] | None = None) -> int:
             include_events=include_events,
         )
     )
+    if args.json:
+        payload = {
+            "provider": provider.provider_id,
+            "out_dir": str(result.out_dir),
+            "session_count": result.session_count,
+            "rendered_count": result.rendered_count,
+            "reused_count": result.reused_count,
+            "removed_count": result.removed_count,
+            "redacted": result.redacted,
+            "landing_relpath": LANDING_FILENAME,
+            "reader_index_relpath": HTML_INDEX_FILENAME,
+            "landing_path": str(result.out_dir / LANDING_FILENAME),
+            "reader_index_path": str(result.out_dir / HTML_INDEX_FILENAME),
+        }
+        sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        return 0
+
     sys.stdout.write(
         f"Mirror export complete: {result.session_count} sessions, "
         f"{result.rendered_count} rendered, {result.reused_count} reused, "

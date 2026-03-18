@@ -195,14 +195,20 @@ These are small ergonomics gaps worth tracking before or during extension work:
    Why:
    the extension should rely on a tiny, explicit set of CLI behaviors rather than informal assumptions
 
-3. Optional future convenience:
-   a machine-readable success output for `codex-session-mirror`
+3. A machine-readable success output for `codex-session-mirror`
    Why:
-   not required for v1, but it would make completion messaging and open-after-export flows cleaner
+   it makes completion messaging and open-after-export flows cleaner
 
 These are intentionally small. None of them justify moving logic out of Python.
 
-The first of these is now captured in [list-json-contract.md](list-json-contract.md).
+The first two of these are now captured in:
+
+- [list-json-contract.md](list-json-contract.md)
+- [extension-invocation-contract.md](extension-invocation-contract.md)
+
+The third is now available through:
+
+- `codex-session-mirror --json`
 
 ## Cross-Platform Invocation Strategy
 

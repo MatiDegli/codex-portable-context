@@ -237,3 +237,24 @@ Why:
 - this keeps continuity aligned with the repo's read-only design
 - it avoids credential sync, raw-state sync, and unofficial session-cloning behavior
 - it is the most conservative path that still preserves cross-device value
+
+## 2026-03-17 - Thin VS Code integration should rely on a tiny documented CLI contract
+
+Decision:
+
+- keep the VS Code extension dependent on a very small extension-facing CLI surface
+- document that surface explicitly instead of letting the extension depend on informal behavior
+- promote `codex-session-mirror --json` as the machine-readable export completion contract
+
+The intended extension surface is:
+
+- `codex-session-mirror --json`
+- `codex-session-list --json`
+- `codex-session-open --print`
+- `codex-session-handoff --latest --print`
+
+Why:
+
+- this keeps the extension thin and orchestration-focused
+- it avoids accidental CLI coupling through undocumented assumptions
+- it improves extension-readiness without moving logic out of Python

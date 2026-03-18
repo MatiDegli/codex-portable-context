@@ -259,7 +259,7 @@ That means:
 
 See [docs/vscode-extension-strategy.md](docs/vscode-extension-strategy.md).
 
-For machine-readable session selection, see the small integration contract for [`codex-session-list --json`](docs/list-json-contract.md).
+For machine-readable session selection, see the small integration contract for [`codex-session-list --json`](docs/list-json-contract.md). For the thin VS Code frontend surface, see the extension-facing CLI contract in [`docs/extension-invocation-contract.md`](docs/extension-invocation-contract.md).
 
 An initial thin extension skeleton also lives under [`extensions/vscode-codex-portable-context/`](extensions/vscode-codex-portable-context/README.md). It is intentionally a frontend over the Python CLI, not a second implementation.
 

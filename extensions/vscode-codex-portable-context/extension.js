@@ -60,21 +60,23 @@ async function exportMirror() {
     return;
   }
 
-  await withCliProgress("Exporting Codex portable mirror", async () => {
+  const exportResult = await withCliProgress("Exporting Codex portable mirror", async () => {
     const args = ["--out-dir", outDir];
     if (exportMode.redacted) {
       args.push("--redact");
     }
-    await runCli("mirror", args, workingDirectory);
+    args.push("--json");
+    const stdout = await runCli("mirror", args, workingDirectory);
+    return parseJsonOutput(stdout, "codex-session-mirror --json");
   });
 
   const action = await vscode.window.showInformationMessage(
-    `Mirror export complete in ${outDir}`,
+    `Mirror export complete: ${exportResult.session_count} sessions in ${exportResult.out_dir}`,
     "Open Landing",
     "Open Latest Reader",
   );
   if (action === "Open Landing") {
-    await openResolvedArtifact("open", ["--out-dir", outDir, "--landing", "--reader", "--print"], workingDirectory);
+    await openArtifactPath(exportResult.reader_index_path);
   } else if (action === "Open Latest Reader") {
     await openResolvedArtifact("open", ["--out-dir", outDir, "--latest", "--reader", "--print"], workingDirectory);
   }
@@ -209,6 +211,15 @@ async function withCliProgress(title, action) {
     },
     action,
   );
+}
+
+function parseJsonOutput(stdout, label) {
+  try {
+    return JSON.parse(stdout);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`${label} returned invalid JSON: ${detail}`);
+  }
 }
 
 function getConfig() {
