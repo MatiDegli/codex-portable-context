@@ -397,3 +397,17 @@ Why:
 - a published orchestration tool is a different product than a read-only artifact core
 - this repo should not drift back into a control plane
 - thread-oriented control for Codex Extension or Codex App, if explored later, deserves its own boundary and risk posture
+
+## 2026-03-18 - Local `.vsix` install should come before Marketplace publication
+
+Decision:
+
+- prepare the extension for local `.vsix` packaging and install before attempting Marketplace publication
+- keep the packaging story lightweight and local-first
+- treat Marketplace publication as a later release/distribution decision, not as the next engineering milestone
+
+Why:
+
+- the extension has now passed a first real manual validation pass
+- local `.vsix` install is the smallest realistic distribution step
+- this keeps scope controlled while still making the extension meaningfully installable
