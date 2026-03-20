@@ -411,3 +411,17 @@ Why:
 - the extension has now passed a first real manual validation pass
 - local `.vsix` install is the smallest realistic distribution step
 - this keeps scope controlled while still making the extension meaningfully installable
+
+## 2026-03-20 - In-repo MCP surface removed after repo split
+
+Decision:
+
+- remove the in-repo MCP package, CLI, tests, and MCP-specific integration docs from `codex-portable-context`
+- keep `codex-portable-context` focused on mirrors, handoffs, readers, provider normalization, and stable local CLI contracts
+- continue any orchestration or OpenClaw-facing MCP work only in the separate `agent-bridge` repo
+
+Why:
+
+- the repo split has now been made explicit and bootstrapped
+- keeping transitional MCP code here would blur the product boundary again
+- this repo is healthier as a core artifact product than as a half-retired orchestration surface
