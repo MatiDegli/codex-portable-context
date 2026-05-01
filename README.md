@@ -208,6 +208,8 @@ These commands operate only on the derived mirror, never on raw `~/.codex`.
   Useful flags: `--metadata`, `--reader`, `--handoff`, `--print`, `--out-dir`
 - `codex-session-handoff`
   Useful flags: `--latest`, `--print`, `--out-dir`
+- `codex-session-handoff-audit`
+  Useful flags: `--limit`, `--json`, `--no-generate`, `--out-dir`
 
 Examples:
 
@@ -227,11 +229,13 @@ codex-session-latest --handoff --print
 codex-session-latest --metadata --print
 codex-session-handoff --latest
 codex-session-handoff 019cef3a --print
+codex-session-handoff-audit --limit 20
+codex-session-handoff-audit 019cef3a --json
 ```
 
 Both `codex-session-open --help` and `codex-session-latest --help` now include short built-in examples so the common open/print flows are easier to discover from the terminal.
 
-`codex-session-mirror --help` and `codex-session-list --help` now follow the same pattern, so all four main helper commands present examples in a consistent style.
+`codex-session-mirror --help`, `codex-session-list --help`, and `codex-session-handoff-audit --help` now follow the same pattern, so the helper commands present examples in a consistent style.
 
 ## Python-Primary Status
 
@@ -460,6 +464,8 @@ The handoff now also adds a compact top layer for faster re-entry:
 - raw audit-trail sections kept lower in the document
 
 The handoff now includes the first continuity bridge layer: a fresh-session re-entry brief with resolved state, durable decisions, changed artifacts, re-entry posture, and a copy-ready restart prompt. See [docs/continuity-bridge-roadmap.md](docs/continuity-bridge-roadmap.md) for the remaining roadmap.
+
+Use `codex-session-handoff-audit --limit 20` to sample recent handoffs and check whether `Decisions / Invariants` is producing useful memory or falling back to `no_memory` / `low_confidence`.
 
 For older mirror outputs, path resolution can fall back to:
 

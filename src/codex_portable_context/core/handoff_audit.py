@@ -1,0 +1,258 @@
+"""Quality audit helpers for generated handoff memory sections."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from .discovery import mirror_layout
+from .handoff import generate_handoff
+from .index import MirrorEntry, entry_session_id, entry_title, sort_entries
+from .listing import truncate
+from .resolve import resolve_unique_entry
+
+MEMORY_KEYS = (
+    "decisions",
+    "invariants",
+    "rejected_paths",
+    "open_architecture_questions",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class HandoffAuditOptions:
+    """Options for selecting and auditing handoff memory quality."""
+
+    limit: int = 10
+    selectors: tuple[str, ...] = ()
+    generate: bool = True
+
+
+def audit_handoffs(
+    entries: list[MirrorEntry],
+    *,
+    out_dir: Path,
+    options: HandoffAuditOptions,
+) -> dict[str, Any]:
+    """Audit selected handoffs and return a JSON-serializable report."""
+
+    selected_entries = _selected_entries(entries, options)
+    items = [
+        _audit_entry(entry, out_dir=out_dir, generate=options.generate)
+        for entry in selected_entries
+    ]
+    return {
+        "summary": _audit_summary(items),
+        "items": items,
+    }
+
+
+def render_handoff_audit(report: dict[str, Any]) -> str:
+    """Render a compact terminal table for a handoff audit report."""
+
+    summary = _as_dict(report.get("summary"))
+    lines = [
+        (
+            "Audited {audited} session(s): {covered} with memory, {empty} empty, "
+            "{errored} errored."
+        ).format(
+            audited=summary.get("audited", 0),
+            covered=summary.get("covered", 0),
+            empty=summary.get("empty", 0),
+            errored=summary.get("errored", 0),
+        ),
+        (
+            "Confidence: high={high}, medium={medium}, low={low}. "
+            "Average memory items: {average:.1f}."
+        ).format(
+            high=summary.get("confidence_counts", {}).get("high", 0),
+            medium=summary.get("confidence_counts", {}).get("medium", 0),
+            low=summary.get("confidence_counts", {}).get("low", 0),
+            average=float(summary.get("average_memory_items", 0.0)),
+        ),
+        "",
+        (
+            f"{'SESSION':<8}  {'TITLE':<34}  {'CONF':<6}  "
+            f"{'D':>2} {'I':>2} {'R':>2} {'O':>2}  {'ROLE':<18}  "
+            f"{'SOURCES':<28}  FLAGS"
+        ),
+    ]
+
+    for raw_item in _as_list(report.get("items")):
+        item = _as_dict(raw_item)
+        counts = _as_dict(item.get("counts"))
+        sources = ", ".join(str(source) for source in _as_list(item.get("sources")))
+        flags = ", ".join(str(flag) for flag in _as_list(item.get("flags"))) or "-"
+        lines.append(
+            f"{str(item.get('session_id', ''))[:8]:<8}  "
+            f"{truncate(str(item.get('title') or ''), 34):<34}  "
+            f"{str(item.get('confidence') or 'error'):<6}  "
+            f"{int(counts.get('decisions', 0)):>2} "
+            f"{int(counts.get('invariants', 0)):>2} "
+            f"{int(counts.get('rejected_paths', 0)):>2} "
+            f"{int(counts.get('open_architecture_questions', 0)):>2}  "
+            f"{truncate(str(item.get('role_hint') or 'unknown'), 18):<18}  "
+            f"{truncate(sources or '-', 28):<28}  "
+            f"{flags}"
+        )
+
+    return "\n".join(lines) + "\n"
+
+
+def _selected_entries(
+    entries: list[MirrorEntry],
+    options: HandoffAuditOptions,
+) -> list[MirrorEntry]:
+    if options.selectors:
+        selected: list[MirrorEntry] = []
+        seen: set[str] = set()
+        for selector in options.selectors:
+            entry = resolve_unique_entry(entries, selector)
+            session_id = entry_session_id(entry)
+            if session_id not in seen:
+                selected.append(entry)
+                seen.add(session_id)
+        return selected
+
+    unique = _unique_recent_entries(entries)
+    if options.limit > 0:
+        return unique[: options.limit]
+    return unique
+
+
+def _unique_recent_entries(entries: list[MirrorEntry]) -> list[MirrorEntry]:
+    unique: dict[str, MirrorEntry] = {}
+    for entry in sort_entries(entries):
+        unique.setdefault(entry_session_id(entry), entry)
+    return list(unique.values())
+
+
+def _audit_entry(entry: MirrorEntry, *, out_dir: Path, generate: bool) -> dict[str, Any]:
+    session_id = entry_session_id(entry)
+    layout = mirror_layout(out_dir)
+    json_path = layout.handoff_json_path(session_id)
+
+    if generate:
+        result = generate_handoff(entry, out_dir)
+        json_path = result.json_path
+
+    if not json_path.is_file():
+        return _error_item(
+            entry,
+            error=f"Handoff JSON not found: {json_path}",
+            flags=["missing_handoff"],
+        )
+
+    try:
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return _error_item(
+            entry,
+            error=f"Invalid handoff JSON: {exc}",
+            flags=["invalid_handoff_json"],
+        )
+
+    memory = _as_dict(payload.get("decisions_and_invariants"))
+    counts = {
+        key: len(_as_list(memory.get(key)))
+        for key in MEMORY_KEYS
+    }
+    total = sum(counts.values())
+    confidence = str(memory.get("confidence") or "unknown")
+    sources = _memory_sources(memory)
+    role_hint = str(_as_dict(payload.get("reentry_posture")).get("role_hint") or "unknown")
+    flags = _quality_flags(total=total, confidence=confidence)
+
+    return {
+        "session_id": session_id,
+        "title": entry_title(entry),
+        "handoff_json_path": str(json_path),
+        "handoff_markdown_path": str(layout.handoff_markdown_path(session_id)),
+        "confidence": confidence,
+        "counts": counts,
+        "total_memory_items": total,
+        "covered": total > 0,
+        "role_hint": role_hint,
+        "sources": sources,
+        "flags": flags,
+    }
+
+
+def _error_item(
+    entry: MirrorEntry,
+    *,
+    error: str,
+    flags: list[str],
+) -> dict[str, Any]:
+    return {
+        "session_id": entry_session_id(entry),
+        "title": entry_title(entry),
+        "confidence": "error",
+        "counts": {key: 0 for key in MEMORY_KEYS},
+        "total_memory_items": 0,
+        "covered": False,
+        "role_hint": "unknown",
+        "sources": [],
+        "flags": flags,
+        "error": error,
+    }
+
+
+def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
+    confidence_counts = {"high": 0, "medium": 0, "low": 0, "unknown": 0, "error": 0}
+    total_memory = 0
+    covered = 0
+    errored = 0
+
+    for item in items:
+        confidence = str(item.get("confidence") or "unknown")
+        confidence_counts[confidence if confidence in confidence_counts else "unknown"] += 1
+        total = int(item.get("total_memory_items") or 0)
+        total_memory += total
+        if total > 0:
+            covered += 1
+        if item.get("error"):
+            errored += 1
+
+    audited = len(items)
+    return {
+        "audited": audited,
+        "covered": covered,
+        "empty": audited - covered - errored,
+        "errored": errored,
+        "coverage_ratio": covered / audited if audited else 0.0,
+        "average_memory_items": total_memory / audited if audited else 0.0,
+        "confidence_counts": confidence_counts,
+    }
+
+
+def _memory_sources(memory: dict[str, Any]) -> list[str]:
+    sources: list[str] = []
+    for key in MEMORY_KEYS:
+        for raw_item in _as_list(memory.get(key)):
+            item = _as_dict(raw_item)
+            source = str(item.get("source") or "")
+            if source and source not in sources:
+                sources.append(source)
+    return sources
+
+
+def _quality_flags(*, total: int, confidence: str) -> list[str]:
+    flags: list[str] = []
+    if total == 0:
+        flags.append("no_memory")
+    if confidence == "low":
+        flags.append("low_confidence")
+    if confidence == "unknown":
+        flags.append("unknown_confidence")
+    return flags
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []

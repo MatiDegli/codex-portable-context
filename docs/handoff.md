@@ -116,3 +116,11 @@ Generate a handoff for a specific session prefix and print the Markdown path:
 ```bash
 codex-session-handoff --out-dir ./out 019cef3a --print
 ```
+
+Audit recent handoff memory quality:
+
+```bash
+codex-session-handoff-audit --out-dir ./out --limit 20
+```
+
+The audit command regenerates selected handoffs by default, then reports whether `Decisions / Invariants` has useful memory, which sources contributed, and which sessions are `no_memory` or `low_confidence`. Use `--no-generate` to inspect existing handoff JSON files only, or `--json` for machine-readable output.

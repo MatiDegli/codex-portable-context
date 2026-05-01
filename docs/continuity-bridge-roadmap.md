@@ -242,6 +242,8 @@ Acceptance checks:
 
 Expose the continuity bridge without turning the static reader into a backend app.
 
+Initial implementation status: `codex-session-handoff-audit` now samples selected handoffs, regenerates them by default, and reports `Decisions / Invariants` coverage, confidence, sources, role hints, and quality flags such as `no_memory` and `low_confidence`. This gives the bridge a repeatable quality check before deeper reader ergonomics.
+
 Possible improvements:
 
 - show whether a handoff exists before linking to it when the mirror can know that

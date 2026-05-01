@@ -16,6 +16,7 @@ codex-session-list = "codex_portable_context.cli.list:main"
 codex-session-open = "codex_portable_context.cli.open:main"
 codex-session-latest = "codex_portable_context.cli.latest:main"
 codex-session-handoff = "codex_portable_context.cli.handoff:main"
+codex-session-handoff-audit = "codex_portable_context.cli.handoff_audit:main"
 
 [project.optional-dependencies]
 dev = [
