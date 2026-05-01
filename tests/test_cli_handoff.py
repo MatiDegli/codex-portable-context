@@ -352,6 +352,39 @@ def test_handoff_cli_filters_command_paths_and_prefers_resolution_outcome(
     assert "/home/tester/project/src/workstation/slack/sync.py" in recommended
 
 
+def test_handoff_cli_resolves_bare_updated_files_from_repo_root(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    linked_handoff_path = repo_root() / "src/codex_portable_context/core/handoff.py"
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        final_answer_after_request=True,
+        final_answer_message=(
+            "Updated the handoff artifact parser and tests.\n\n"
+            f"Changed file: [handoff.py]({linked_handoff_path}:10)."
+        ),
+        tool_updated_files=("handoff.py", "test_cli_handoff.py"),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    changed = {
+        item["path"]
+        for item in payload["changed_artifacts"]["changed_paths"]
+        if item["source"] == "tool_output_updated_files"
+    }
+    recommended = payload["changed_artifacts"]["recommended_inspection_order"]
+    assert "handoff.py" in changed
+    assert "tests/test_cli_handoff.py" in changed
+    assert "src/codex_portable_context/core/handoff.py" in recommended
+    assert "handoff.py" not in recommended
+    assert "/" not in recommended
+
+
 def test_handoff_cli_expands_contextual_short_follow_up(
     tmp_path: Path,
     capsys,
@@ -591,6 +624,7 @@ def build_fixture_mirror(
     wrapped_request: str = "Why is the IDE output empty?",
     prior_wrapped_request: str = "",
     developer_context: str = "",
+    tool_updated_files: tuple[str, ...] = ("README.md",),
 ) -> Path:
     codex_home = tmp_path / ".codex"
     source_dir = codex_home / "sessions" / "2026" / "03" / "16"
@@ -615,6 +649,7 @@ def build_fixture_mirror(
         final_answer_after_request=final_answer_after_request,
         final_answer_message=final_answer_message,
         developer_context=developer_context,
+        tool_updated_files=tool_updated_files,
     )
     write_session(
         source_dir / "rollout-2026-03-16T10-04-00-child-session.jsonl",
@@ -769,6 +804,7 @@ def write_session(
     final_answer_after_request: bool = False,
     final_answer_message: str = "The final answer explains why the IDE output was empty.",
     developer_context: str = "",
+    tool_updated_files: tuple[str, ...] = ("README.md",),
 ) -> None:
     records = [
         {
@@ -902,7 +938,7 @@ def write_session(
             "payload": {
                 "type": "function_call_output",
                 "call_id": f"call-{session_id}",
-                "output": "Success. Updated the following files:\nM README.md\n",
+                "output": _updated_files_output(tool_updated_files),
             },
         },
     ]
@@ -950,6 +986,12 @@ def write_session(
         "\n".join(json.dumps(record) for record in records) + "\n",
         encoding="utf-8",
     )
+
+
+def _updated_files_output(paths: tuple[str, ...]) -> str:
+    lines = ["Success. Updated the following files:"]
+    lines.extend(f"M {path}" for path in paths)
+    return "\n".join(lines) + "\n"
 
 
 def repo_root() -> Path:

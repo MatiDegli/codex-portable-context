@@ -356,6 +356,25 @@ Acceptance checks:
 - The action names the leading risk, recommendation, or artifact to inspect first.
 - Unrelated local dirty paths do not displace stronger handoff-specific artifacts.
 
+## Phase 5e: Artifact Path Resolution and Cleanup
+
+Reduce low-value artifact recommendations caused by bare filenames or malformed Markdown path fragments.
+
+Implementation guidance:
+
+- Preserve exact paths when tool output already reports a path.
+- Resolve bare filenames against the repo root only when there is a unique match.
+- Do not guess when multiple repo files share the same basename.
+- Drop malformed Markdown fragments and root-only paths.
+- Omit bare duplicates when a qualified path with the same basename is already known.
+- Treat bare `__init__.py` as too ambiguous for recommended inspection order.
+
+Acceptance checks:
+
+- `bare_recommended_artifacts` decreases on real handoff audits.
+- Recommended inspection order prefers `src/...`, `tests/...`, or docs paths over basenames.
+- Ambiguous filenames remain conservative instead of pointing at the wrong file.
+
 ## Phase 6: Provider-Agnostic Continuity Quality
 
 Keep the new bridge fields provider-neutral.

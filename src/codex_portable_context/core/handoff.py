@@ -895,9 +895,13 @@ def _build_changed_artifacts(
         for block in parsed.conversation_entries[-RECENT_ACTION_LOOKBACK:]:
             if block.kind == "tool_output" and "Updated the following files:" in block.text:
                 for path in _updated_files_from_tool_output(block.text):
+                    resolved_path = _resolve_artifact_path(
+                        path,
+                        repo_root=_string(repo_state.get("repo_root")),
+                    )
                     _append_artifact(
                         changed_paths,
-                        path=path,
+                        path=resolved_path,
                         source="tool_output_updated_files",
                         status="changed",
                         note="Reported by recent tool output.",
@@ -995,12 +999,17 @@ def _path_mentions_from_text(text: str) -> list[str]:
 
 def _normalize_artifact_path(path: str) -> str:
     cleaned = path.strip().strip("\"'")
+    if "](" in cleaned:
+        cleaned = cleaned.rsplit("](", maxsplit=1)[-1]
+        cleaned = cleaned.split(")", maxsplit=1)[0]
     if cleaned.startswith("<") and cleaned.endswith(">"):
         cleaned = cleaned[1:-1].strip()
     cleaned = cleaned.replace("\\", "/")
     cleaned = re.sub(r"^file://", "", cleaned)
     cleaned = re.sub(r":\d+(?::\d+)?$", "", cleaned)
     cleaned = cleaned.rstrip(".,;)")
+    if cleaned in {"/", "./", "../"}:
+        return ""
     if not cleaned or cleaned.startswith(("http://", "https://")):
         return ""
     if _looks_like_shell_command_path(cleaned):
@@ -1012,6 +1021,50 @@ def _normalize_artifact_path(path: str) -> str:
     if "/" not in cleaned and "." not in Path(cleaned).name:
         return ""
     return cleaned
+
+
+def _resolve_artifact_path(path: str, *, repo_root: str) -> str:
+    normalized = _normalize_artifact_path(path)
+    if not normalized or "/" in normalized or "\\" in normalized:
+        return normalized
+    if not repo_root or not Path(normalized).suffix:
+        return normalized
+
+    root = Path(repo_root).expanduser()
+    if not root.is_dir():
+        return normalized
+
+    matches = _repo_filename_matches(root, normalized)
+    if len(matches) != 1:
+        return normalized
+    best_match = matches[0]
+    try:
+        return best_match.relative_to(root).as_posix()
+    except ValueError:
+        return best_match.as_posix()
+
+
+def _repo_filename_matches(root: Path, filename: str) -> list[Path]:
+    ignored_dirs = {
+        ".agent-bridge",
+        ".codex",
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".venv",
+        "node_modules",
+        "out",
+    }
+    matches: list[Path] = []
+    for candidate in root.rglob(filename):
+        if any(part in ignored_dirs for part in candidate.parts):
+            continue
+        if candidate.is_file():
+            matches.append(candidate)
+        if len(matches) >= 25:
+            break
+    return matches
 
 
 def _looks_like_shell_command_path(path: str) -> bool:
@@ -1036,14 +1089,33 @@ def _recommended_inspection_order(
     key_paths: list[dict[str, str]],
 ) -> list[str]:
     ordered: list[str] = []
+    qualified_basenames = _qualified_artifact_basenames([*key_paths, *changed_paths])
     for item in [*key_paths, *changed_paths]:
         path = item.get("path", "")
         if not path or path in ordered:
             continue
         if not _is_recommended_artifact_path(path):
             continue
+        if _is_bare_artifact_path(path) and Path(path).name in qualified_basenames:
+            continue
         ordered.append(path)
     return ordered
+
+
+def _qualified_artifact_basenames(items: list[dict[str, str]]) -> set[str]:
+    basenames: set[str] = set()
+    for item in items:
+        path = item.get("path", "")
+        if "/" in path.replace("\\", "/"):
+            name = Path(path.replace("\\", "/")).name
+            if name:
+                basenames.add(name)
+    return basenames
+
+
+def _is_bare_artifact_path(path: str) -> bool:
+    normalized = path.strip().replace("\\", "/")
+    return bool(normalized) and "/" not in normalized and "." in Path(normalized).name
 
 
 def _is_recommended_artifact_path(path: str) -> bool:
@@ -1053,6 +1125,8 @@ def _is_recommended_artifact_path(path: str) -> bool:
     if normalized in {".codex", ".agent-bridge", ".agent-bridge/", "workflow", "workflow/"}:
         return False
     if normalized.startswith((".codex/", ".agent-bridge/", "workflow/")):
+        return False
+    if normalized == "__init__.py":
         return False
     if normalized.endswith(".env") or "/.env" in normalized:
         return False
@@ -2992,7 +3066,7 @@ def _updated_files_from_tool_output(text: str) -> list[str]:
             break
         normalized = re.sub(r"^[A-Z?]+\s+", "", line)
         if normalized and _looks_like_changed_path(normalized):
-            files.append(Path(normalized).name or normalized)
+            files.append(normalized)
     return files
 
 
