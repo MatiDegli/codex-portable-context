@@ -74,6 +74,7 @@ Before implementation starts:
 - identify missing fields only if they are low-risk and provider-agnostic
 - prefer extracting stable facts over adding narrative synthesis
 - verify that `codex-session-open` and `codex-session-handoff` already cover the destination-side lookup flow cleanly
+- use [Continuity Bridge Roadmap](./continuity-bridge-roadmap.md) as the implementation plan for stronger fresh-session re-entry
 
 ### Good Candidate Gaps
 
@@ -81,6 +82,10 @@ Before implementation starts:
 - clearer `Next recommended action`
 - better `Open Loops / Risks`
 - a more explicit continuity entry section in the reader
+- continuation brief
+- resolved request state
+- durable decisions and invariants
+- copy-ready restart prompt
 
 ## Phase 3: Thin UX Improvements
 

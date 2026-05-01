@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from pathlib import Path
 
 from codex_portable_context.cli.handoff import main
@@ -35,6 +36,36 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
             "Current State and Open Loops."
         )
     )
+    assert payload["continuation_brief"]["what_we_were_doing"] == "Why is the IDE output empty?"
+    assert payload["continuation_brief"]["latest_resolved_request"] == ""
+    assert (
+        payload["resolved_state"]["latest_user_request"]
+        == "Why is the IDE output empty?"
+    )
+    assert payload["resolved_state"]["request_resolution_status"] == "unanswered"
+    assert payload["resolved_state"]["validation_summary"] == "ran ./scripts/validate-python-v2"
+    assert payload["restart_prompt"]["kind"] == "fresh_session_reentry"
+    assert payload["reentry_posture"]["initial_mode"] == "read_only_context_retrieval"
+    assert payload["reentry_posture"]["requires_confirmation_before_changes"] is True
+    assert "run_commands" in payload["reentry_posture"]["forbidden_first_turn_actions"]
+    assert payload["decisions_and_invariants"]["confidence"] in {"low", "medium", "high"}
+    changed_paths = {
+        item["path"]: item
+        for item in payload["changed_artifacts"]["changed_paths"]
+    }
+    assert changed_paths["README.md"]["source"] == "tool_output_updated_files"
+    assert "README.md" in payload["changed_artifacts"]["recommended_inspection_order"]
+    assert "Continue from a local extractive handoff." in payload["restart_prompt"]["text"]
+    assert "Initial operating mode: read-only context retrieval and review only." in (
+        payload["restart_prompt"]["text"]
+    )
+    assert "Do not run commands" in payload["restart_prompt"]["text"]
+    assert "Ask the user to choose one mode" in payload["restart_prompt"]["text"]
+    assert "Session ID: session-5678" in payload["restart_prompt"]["text"]
+    assert "Linked child sessions:" in payload["restart_prompt"]["text"]
+    assert "Child Fixture Session" in payload["restart_prompt"]["text"]
+    assert "Changed / key artifacts:" in payload["restart_prompt"]["text"]
+    assert "Decisions and invariants:" in payload["restart_prompt"]["text"]
     assert (
         payload["continuity_entry"]["primary_artifact_relpath"]
         == "handoffs/session-5678.md"
@@ -67,6 +98,42 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     assert payload["recent_actions"]
     assert "ran ./scripts/validate-python-v2" in payload["recent_actions"]
     assert "updated README.md" in payload["recent_actions"]
+    assert payload["compaction_summaries"] == [
+        {
+            "timestamp": "2026-03-16T10:05:01Z",
+            "source": "context_compacted",
+            "summary": (
+                "The session established that the fixture repo should be inspected "
+                "before continuing."
+            ),
+            "prompt": "Continue from the fixture inspection context.",
+        }
+    ]
+    assert payload["linked_child_sessions"] == [
+        {
+            "parent_session_id": "session-5678",
+            "child_session_id": "session-child-1",
+            "status": "closed",
+            "title": "Child Fixture Session",
+            "cwd": "/home/tester/project",
+            "rollout_path": str(
+                tmp_path
+                / ".codex"
+                / "sessions"
+                / "2026"
+                / "03"
+                / "16"
+                / "rollout-2026-03-16T10-04-00-child-session.jsonl"
+            ),
+            "first_user_message": "Please draft the child fixture slice.",
+            "latest_assistant_message": "I will inspect Child Fixture Session.",
+            "updated_at": "2026-03-16T10:04:59Z",
+            "agent_nickname": "Fixture",
+            "agent_role": "worker",
+            "markdown_relpath": "sessions/session-child-1.md",
+            "handoff_markdown_relpath": "",
+        }
+    ]
     assert payload["recent_window"]
     assert any(
         "Please inspect Second Fixture Session." in item["text"]
@@ -74,9 +141,22 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     )
 
     markdown = (out_dir / "handoffs" / "session-5678.md").read_text(encoding="utf-8")
+    assert "## Continuation Brief" in markdown
+    assert "## Resolved State" in markdown
+    assert "## Re-Entry Posture" in markdown
+    assert "## Changed / Key Artifacts" in markdown
+    assert "README.md" in markdown
+    assert "## Decisions / Invariants" in markdown
+    assert "## Restart Prompt" in markdown
+    assert "Do not use tools or inspect files in the first response." in markdown
+    assert "```text" in markdown
     assert "## Current State" in markdown
     assert "## Continuity Entry" in markdown
     assert "Last substantive user request" in markdown
+    assert "## Compaction Summaries" in markdown
+    assert "Continue from the fixture inspection context." in markdown
+    assert "## Linked Child Sessions" in markdown
+    assert "Child Fixture Session" in markdown
     assert "## Recent Actions (normalized)" in markdown
     assert "### Destination Workflow" in markdown
     assert "## Open Loops / Risks" in markdown
@@ -168,7 +248,205 @@ def test_handoff_cli_recent_actions_look_back_past_trailing_noise(
     assert "updated README.md" in payload["recent_actions"]
 
 
-def build_fixture_mirror(tmp_path: Path, *, trailing_noop_pairs: int = 0) -> Path:
+def test_handoff_cli_marks_question_answered_after_final_response(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(tmp_path, final_answer_after_request=True)
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Handoff bundle written:" in captured.out
+
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    assert payload["resolved_state"]["request_resolution_status"] == "handled_with_changes"
+    assert (
+        payload["continuation_brief"]["latest_resolved_request"]
+        == "Why is the IDE output empty?"
+    )
+    assert (
+        payload["continuation_brief"]["next_best_action"]
+        == (
+            "Start a fresh local session and continue from this handoff's "
+            "Current State and Open Loops."
+        )
+    )
+    assert payload["open_loops"]["open_question"] == "none"
+
+    markdown = (out_dir / "handoffs" / "session-5678.md").read_text(encoding="utf-8")
+    assert "- Request resolution status: `handled_with_changes`" in markdown
+    assert "The final answer explains why the IDE output was empty." in markdown
+
+
+def test_handoff_cli_expands_contextual_short_follow_up(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request="Pasamelo",
+        prior_wrapped_request="Which agent should receive the scoring prompt?",
+        final_answer_after_request=True,
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Handoff bundle written:" in captured.out
+
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    assert payload["resolved_state"]["latest_user_request"] == "Pasamelo"
+    assert (
+        payload["resolved_state"]["previous_user_request"]
+        == "Which agent should receive the scoring prompt?"
+    )
+    assert payload["resolved_state"]["latest_user_request_is_context_dependent"] == "yes"
+    assert (
+        payload["resolved_state"]["contextual_user_request"]
+        == "Which agent should receive the scoring prompt? Follow-up request: Pasamelo"
+    )
+    assert (
+        payload["continuation_brief"]["what_we_were_doing"]
+        == "Which agent should receive the scoring prompt? Follow-up request: Pasamelo"
+    )
+    assert (
+        payload["continuation_brief"]["latest_resolved_request"]
+        == "Which agent should receive the scoring prompt? Follow-up request: Pasamelo"
+    )
+
+    markdown = (out_dir / "handoffs" / "session-5678.md").read_text(encoding="utf-8")
+    assert "- Latest user request: Pasamelo" in markdown
+    assert (
+        "- Contextual user request: Which agent should receive the scoring prompt? "
+        "Follow-up request: Pasamelo"
+    ) in markdown
+
+
+def test_handoff_cli_expands_long_pasamelo_follow_up(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request="Pasamelo, and include subagents for recursive research.",
+        prior_wrapped_request="Should we write a research prompt first?",
+        final_answer_after_request=True,
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    assert payload["resolved_state"]["latest_user_request_is_context_dependent"] == "yes"
+    assert (
+        payload["resolved_state"]["contextual_user_request"]
+        == (
+            "Should we write a research prompt first? Follow-up request: "
+            "Pasamelo, and include subagents for recursive research."
+        )
+    )
+
+
+def test_handoff_cli_extracts_decisions_and_invariants(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request="Review candidate supply and descriptor architecture.",
+        final_answer_after_request=True,
+        final_answer_message=(
+            "What we learned:\n"
+            "- pairwise_char_semantic_rescue_v1 prueba que p17 needs a separate "
+            "semantic lane.\n"
+            "- It is not deployable yet because candidate supply is still limited.\n"
+            "- The next step is to review the descriptor architecture before "
+            "implementation.\n\n"
+            "Now continue from that posture."
+        ),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    memory = payload["decisions_and_invariants"]
+    all_statements = " ".join(
+        item["statement"]
+        for key in ("decisions", "invariants", "rejected_paths", "open_architecture_questions")
+        for item in memory[key]
+    )
+    assert "separate semantic lane" in all_statements
+    assert "candidate supply" in all_statements
+    assert "not deployable" in all_statements
+    assert "descriptor architecture" in all_statements
+    assert "# Context from my IDE setup" not in all_statements
+    assert "## My request for Codex" not in all_statements
+    assert "Now continue" not in all_statements
+    assert payload["reentry_posture"]["role_hint"] == "architect_reviewer"
+    assert "Decisions and invariants:" in payload["restart_prompt"]["text"]
+    assert "candidate supply" in payload["restart_prompt"]["text"]
+
+
+def test_handoff_cli_extracts_structural_context_decisions(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        developer_context=(
+            "You are the cross-repo architect.\n\n"
+            "## Stable boundary\n\n"
+            "- `workstation-public` explicitly does NOT own:\n"
+            "  - provider/session/thread transport\n"
+            "  - workflow runtime\n"
+            "- repo/workflow truth remains repo-owned\n\n"
+            "## Strategic decisions already made\n\n"
+            "1. The new thread/session communication layer should NOT live in "
+            "`workstation-public`.\n"
+            "2. We explicitly chose a new repo for clean separation from day one.\n"
+            "3. The correct target is a transport/control layer, not a panel UI first.\n"
+        ),
+        final_answer_after_request=True,
+        final_answer_message=(
+            "The final answer handled a small follow-up without restating boundaries."
+        ),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    memory = payload["decisions_and_invariants"]
+    all_statements = " ".join(
+        item["statement"]
+        for key in ("decisions", "invariants", "rejected_paths", "open_architecture_questions")
+        for item in memory[key]
+    )
+    assert "provider/session/thread transport" in all_statements
+    assert "repo/workflow truth remains repo-owned" in all_statements
+    assert "new repo for clean separation" in all_statements
+    assert "transport/control layer" in all_statements
+    assert payload["reentry_posture"]["role_hint"] == "architect_reviewer"
+    assert "context_structural_memory" in memory["evidence"][0]
+
+
+def build_fixture_mirror(
+    tmp_path: Path,
+    *,
+    trailing_noop_pairs: int = 0,
+    final_answer_after_request: bool = False,
+    final_answer_message: str = "The final answer explains why the IDE output was empty.",
+    wrapped_request: str = "Why is the IDE output empty?",
+    prior_wrapped_request: str = "",
+    developer_context: str = "",
+) -> Path:
     codex_home = tmp_path / ".codex"
     source_dir = codex_home / "sessions" / "2026" / "03" / "16"
     source_dir.mkdir(parents=True)
@@ -185,9 +463,21 @@ def build_fixture_mirror(tmp_path: Path, *, trailing_noop_pairs: int = 0) -> Pat
         updated_at="2026-03-16T10:05:06Z",
         thread_name="Second Fixture Session",
         cwd=str(repo_root()),
-        wrapped_request="Why is the IDE output empty?",
+        wrapped_request=wrapped_request,
+        prior_wrapped_request=prior_wrapped_request,
         include_turn_aborted=True,
         trailing_noop_pairs=trailing_noop_pairs,
+        final_answer_after_request=final_answer_after_request,
+        final_answer_message=final_answer_message,
+        developer_context=developer_context,
+    )
+    write_session(
+        source_dir / "rollout-2026-03-16T10-04-00-child-session.jsonl",
+        session_id="session-child-1",
+        updated_at="2026-03-16T10:04:59Z",
+        thread_name="Child Fixture Session",
+        cwd="/home/tester/project",
+        wrapped_request="Draft the child fixture slice.",
     )
 
     (codex_home / "session_index.jsonl").write_text(
@@ -207,6 +497,13 @@ def build_fixture_mirror(tmp_path: Path, *, trailing_noop_pairs: int = 0) -> Pat
                         "updated_at": "2026-03-16T10:05:06Z",
                     }
                 ),
+                json.dumps(
+                    {
+                        "id": "session-child-1",
+                        "thread_name": "Child Fixture Session",
+                        "updated_at": "2026-03-16T10:04:59Z",
+                    }
+                ),
             ]
         )
         + "\n",
@@ -221,7 +518,96 @@ def build_fixture_mirror(tmp_path: Path, *, trailing_noop_pairs: int = 0) -> Pat
             out_dir=out_dir,
         )
     )
+    write_thread_state(codex_home)
     return out_dir
+
+
+def write_thread_state(codex_home: Path) -> None:
+    database_path = codex_home / "state_5.sqlite"
+    child_rollout_path = (
+        codex_home
+        / "sessions"
+        / "2026"
+        / "03"
+        / "16"
+        / "rollout-2026-03-16T10-04-00-child-session.jsonl"
+    )
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE thread_spawn_edges (
+              parent_thread_id TEXT NOT NULL,
+              child_thread_id TEXT NOT NULL PRIMARY KEY,
+              status TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE threads (
+              id TEXT PRIMARY KEY,
+              rollout_path TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              source TEXT NOT NULL,
+              model_provider TEXT NOT NULL,
+              cwd TEXT NOT NULL,
+              title TEXT NOT NULL,
+              sandbox_policy TEXT NOT NULL,
+              approval_mode TEXT NOT NULL,
+              first_user_message TEXT NOT NULL,
+              agent_nickname TEXT,
+              agent_role TEXT,
+              updated_at_ms INTEGER
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO thread_spawn_edges (
+              parent_thread_id,
+              child_thread_id,
+              status
+            ) VALUES (?, ?, ?)
+            """,
+            ("session-5678", "session-child-1", "closed"),
+        )
+        connection.execute(
+            """
+            INSERT INTO threads (
+              id,
+              rollout_path,
+              created_at,
+              updated_at,
+              source,
+              model_provider,
+              cwd,
+              title,
+              sandbox_policy,
+              approval_mode,
+              first_user_message,
+              agent_nickname,
+              agent_role,
+              updated_at_ms
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "session-child-1",
+                str(child_rollout_path),
+                1773655499,
+                1773655499,
+                "codex_vscode",
+                "openai",
+                "/home/tester/project",
+                "Child Fixture Session",
+                "workspace-write",
+                "never",
+                "Please draft the child fixture slice.",
+                "Fixture",
+                "worker",
+                1773655499000,
+            ),
+        )
 
 
 def write_session(
@@ -232,8 +618,12 @@ def write_session(
     thread_name: str,
     cwd: str = "/home/tester/project",
     wrapped_request: str = "Proceed",
+    prior_wrapped_request: str = "",
     include_turn_aborted: bool = False,
     trailing_noop_pairs: int = 0,
+    final_answer_after_request: bool = False,
+    final_answer_message: str = "The final answer explains why the IDE output was empty.",
+    developer_context: str = "",
 ) -> None:
     records = [
         {
@@ -258,7 +648,7 @@ def write_session(
                 "content": [
                     {
                         "type": "input_text",
-                        "text": f"Developer context for {thread_name}.",
+                        "text": developer_context or f"Developer context for {thread_name}.",
                     }
                 ],
             },
@@ -271,6 +661,26 @@ def write_session(
                 "message": f"Please inspect {thread_name}.",
             },
         },
+        *(
+            [
+                {
+                    "timestamp": updated_at,
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "user_message",
+                        "message": (
+                            "# Context from my IDE setup:\n\n"
+                            "## Active file: README.md\n\n"
+                            "## Open tabs:\n"
+                            "- README.md: README.md\n\n"
+                            f"## My request for Codex:\n{prior_wrapped_request}"
+                        ),
+                    },
+                }
+            ]
+            if prior_wrapped_request
+            else []
+        ),
         {
             "timestamp": updated_at,
             "type": "event_msg",
@@ -283,6 +693,18 @@ def write_session(
                     "- README.md: README.md\n\n"
                     f"## My request for Codex:\n{wrapped_request}"
                 ),
+            },
+        },
+        {
+            "timestamp": "2026-03-16T10:05:01Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "context_compacted",
+                "summary": (
+                    "The session established that the fixture repo should be "
+                    "inspected before continuing."
+                ),
+                "prompt": "Continue from the fixture inspection context.",
             },
         },
         *(
@@ -339,6 +761,18 @@ def write_session(
             },
         },
     ]
+    if final_answer_after_request:
+        records.append(
+            {
+                "timestamp": "2026-03-16T10:05:07Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "agent_message",
+                    "message": final_answer_message,
+                    "phase": "final_answer",
+                },
+            }
+        )
     for index in range(trailing_noop_pairs):
         call_id = f"noop-{session_id}-{index}"
         timestamp = f"2026-03-16T10:05:{10 + index:02d}Z"

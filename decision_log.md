@@ -1,5 +1,44 @@
 # Decision Log
 
+## 2026-05-01 - Handoffs can enrich from optional local thread links
+
+Decision:
+
+- treat encrypted provider reasoning and empty compaction payloads as unavailable to the handoff flow
+- consume visible compaction summaries only when provider events expose them in clear text
+- enrich handoffs from local `state_5.sqlite` child-thread links when available
+- keep SQLite state optional and read-only, with Python stdlib support instead of a required external CLI
+
+Why:
+
+- local inspection found no recoverable clear-text compaction summaries in current Codex JSONL/state
+- `thread_spawn_edges` provides useful continuity for delegated sessions without syncing raw provider state
+- optional enrichment preserves the project's derived-artifact, local-first safety model
+
+## 2026-05-01 - Continuation brief becomes the handoff re-entry layer
+
+Decision:
+
+- add `continuation_brief` as the first operator-facing re-entry section
+- add `resolved_state` to separate latest user request from whether it was answered, handled, blocked, or still open
+- stop treating every question-shaped latest request as an open loop when later final-answer or task-completion evidence exists
+- expand short context-dependent follow-ups such as `Pasamelo` with the previous substantive request
+- add `changed_artifacts` to surface concrete paths and a recommended inspection order
+- add `decisions_and_invariants` to preserve durable architectural memory
+- add `restart_prompt` as a deterministic, copy-ready fresh-session prompt
+- add `reentry_posture` so the first fresh-session turn defaults to read-only retrieval/review
+
+Why:
+
+- real long-session handoffs were operationally useful but still too generic for seamless fresh-session continuation
+- answer-only analytical turns need to be represented as resolved even when no file-changing action occurred
+- short follow-ups are faithful transcript entries but weak standalone continuation anchors
+- fresh sessions need concrete artifact paths to avoid vague transcript spelunking
+- fresh sessions should not need to rediscover settled architectural conclusions
+- a fresh local session needs one compact prompt before reaching for the full transcript
+- re-entry prompts can otherwise cause a fresh agent to start implementing before the user confirms its role
+- the implementation remains deterministic and traceable to transcript/task events
+
 ## 2026-03-15 - v1 product thesis frozen
 
 Decision:
@@ -237,6 +276,21 @@ Why:
 - this keeps continuity aligned with the repo's read-only design
 - it avoids credential sync, raw-state sync, and unofficial session-cloning behavior
 - it is the most conservative path that still preserves cross-device value
+
+## 2026-05-01 - Handoffs should evolve toward continuity bridge artifacts
+
+Decision:
+
+- formalize a continuity bridge roadmap for stronger fresh-session re-entry
+- keep the work inside derived local artifacts and the Python core
+- add compact, traceable re-entry layers before adding more UI
+- preserve the current audit trail as fallback evidence
+
+Why:
+
+- real long-session handoffs showed that recent actions and tool calls are not enough to recover the prior mental model
+- architecture and coordination sessions need durable decisions, boundaries, invariants, resolved state, and a restart prompt
+- the improvement can increase continuity quality without raw state sync, credentials, provider write-back, or unofficial resume semantics
 
 ## 2026-03-17 - Thin VS Code integration should rely on a tiny documented CLI contract
 

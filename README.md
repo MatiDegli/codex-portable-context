@@ -459,6 +459,8 @@ The handoff now also adds a compact top layer for faster re-entry:
 - `Open Loops / Risks`
 - raw audit-trail sections kept lower in the document
 
+The handoff now includes the first continuity bridge layer: a fresh-session re-entry brief with resolved state, durable decisions, changed artifacts, re-entry posture, and a copy-ready restart prompt. See [docs/continuity-bridge-roadmap.md](docs/continuity-bridge-roadmap.md) for the remaining roadmap.
+
 For older mirror outputs, path resolution can fall back to:
 
 - `metadata/<session-id>.json`
@@ -467,6 +469,7 @@ For older mirror outputs, path resolution can fall back to:
 ## Docs
 
 - [docs/architecture.md](docs/architecture.md)
+- [docs/continuity-bridge-roadmap.md](docs/continuity-bridge-roadmap.md)
 - [docs/handoff.md](docs/handoff.md)
 - [docs/linux-to-linux-handoff.md](docs/linux-to-linux-handoff.md)
 - [docs/linux-to-windows-handoff.md](docs/linux-to-windows-handoff.md)

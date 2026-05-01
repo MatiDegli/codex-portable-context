@@ -84,7 +84,12 @@ The exact re-entry workflow should be:
 
 1. open `handoffs/<session-id>.md`
 2. read:
-   - `Current State`
+   - `Continuation Brief`
+   - `Resolved State`
+   - `Changed / Key Artifacts`
+   - `Decisions / Invariants`
+   - `Re-Entry Posture`
+   - `Restart Prompt`
    - `Recent Actions (normalized)`
    - `Open Loops / Risks`
 3. confirm the intended next step
@@ -129,3 +134,5 @@ After this bundle shape is accepted:
 
 - verify whether current handoff fields are sufficient in real Codex device-to-device usage
 - only then decide whether any low-risk continuity-specific UX polish is needed
+
+The current field review found that operational handoffs are useful but not yet enough for long-session cognitive re-entry. The follow-up roadmap is [Continuity Bridge Roadmap](./continuity-bridge-roadmap.md).

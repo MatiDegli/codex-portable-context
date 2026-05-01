@@ -32,6 +32,44 @@ def test_resolve_unique_entry_accepts_unique_prefix() -> None:
     assert resolved["title"] == "One"
 
 
+def test_resolve_unique_entry_deduplicates_same_session_id() -> None:
+    entries = [
+        {
+            "session_id": "019cef3a-f82c",
+            "title": "Older Duplicate",
+            "updated_at": "2026-03-15T01:00:00Z",
+        },
+        {
+            "session_id": "019cef3a-f82c",
+            "title": "Newer Duplicate",
+            "updated_at": "2026-03-15T02:00:00Z",
+        },
+    ]
+
+    resolved = resolve_unique_entry(entries, "019cef3a")
+
+    assert resolved["title"] == "Newer Duplicate"
+
+
+def test_resolve_unique_entry_keeps_distinct_prefixes_ambiguous() -> None:
+    entries = [
+        {"session_id": "019cef3a-f82c", "title": "One"},
+        {"session_id": "019cef3a-abcd", "title": "Two"},
+        {"session_id": "019cef3a-abcd", "title": "Two Duplicate"},
+    ]
+
+    try:
+        resolve_unique_entry(entries, "019cef3a")
+    except ValueError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("Expected an ambiguous selector error.")
+
+    assert "Ambiguous session selector: 019cef3a" in message
+    assert message.count("019cef3a-f82c") == 1
+    assert message.count("019cef3a-abcd") == 1
+
+
 def test_entry_path_falls_back_to_contract_paths(tmp_path: Path) -> None:
     entry = {"session_id": "session-123", "title": "Example"}
     brief_label = entry_brief_label({"session_id": "session-12345678", "title": "Example"})

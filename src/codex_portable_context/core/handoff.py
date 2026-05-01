@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -19,6 +20,7 @@ from .parsing import ParsedSession, RenderBlock
 from .redaction import RedactionContext, redact_text
 
 RECENT_ACTION_LOOKBACK = 80
+LINKED_CHILD_SESSION_LIMIT = 12
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +82,10 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
 
     session = _as_dict(handoff.get("session"))
     artifacts = _as_dict(handoff.get("artifacts"))
+    continuation_brief = _as_dict(handoff.get("continuation_brief"))
+    resolved_state = _as_dict(handoff.get("resolved_state"))
+    restart_prompt = _as_dict(handoff.get("restart_prompt"))
+    reentry_posture = _as_dict(handoff.get("reentry_posture"))
     continuity_entry = _as_dict(handoff.get("continuity_entry"))
     current_state = _as_dict(handoff.get("current_state"))
     open_loops = _as_dict(handoff.get("open_loops"))
@@ -89,6 +95,10 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
     recent_window = _as_list(handoff.get("recent_window"))
     recent_events = _as_list(handoff.get("recent_notable_events"))
     recent_tools = _as_list(handoff.get("recent_tool_activity"))
+    compaction_summaries = _as_list(handoff.get("compaction_summaries"))
+    linked_child_sessions = _as_list(handoff.get("linked_child_sessions"))
+    changed_artifacts = _as_dict(handoff.get("changed_artifacts"))
+    decisions_and_invariants = _as_dict(handoff.get("decisions_and_invariants"))
     transcript_link = _handoff_relpath(_string(artifacts.get("markdown_relpath")))
     metadata_link = _handoff_relpath(_string(artifacts.get("metadata_relpath")))
     reader_link = _handoff_relpath(_string(artifacts.get("reader_relpath")))
@@ -122,6 +132,17 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         if artifacts.get("repo_clean") is False
         else "unknown"
     )
+    continuation_evidence = [
+        f"- {item}"
+        for item in _as_list(continuation_brief.get("evidence"))
+    ] or ["- none"]
+    resolution_status = resolved_state.get("request_resolution_status") or "unknown"
+    remaining_local_paths = resolved_state.get("remaining_local_only_paths") or "n/a"
+    contextual_request = resolved_state.get("contextual_user_request") or "n/a"
+    inspection_order_lines = [
+        f"- `{item}`"
+        for item in _as_list(changed_artifacts.get("recommended_inspection_order"))
+    ] or ["- none"]
 
     lines: list[str] = [
         f"# Handoff: {session.get('title') or handoff.get('session_id')}",
@@ -144,6 +165,96 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         f"- Latest assistant reply: {session.get('last_assistant_message') or 'n/a'}",
         f"- Activity: {session.get('activity') or 'n/a'}",
         f"- Environment: {session.get('environment') or 'n/a'}",
+        "",
+        "## Continuation Brief",
+        "",
+        f"- What we were doing: {continuation_brief.get('what_we_were_doing') or 'n/a'}",
+        f"- Why it mattered: {continuation_brief.get('why_it_mattered') or 'n/a'}",
+        f"- Latest resolved request: {continuation_brief.get('latest_resolved_request') or 'n/a'}",
+        f"- Last meaningful outcome: {continuation_brief.get('last_meaningful_outcome') or 'n/a'}",
+        f"- Next best action: {continuation_brief.get('next_best_action') or 'n/a'}",
+        f"- Do not do: {continuation_brief.get('do_not_do') or 'n/a'}",
+        f"- Confidence: `{continuation_brief.get('confidence') or 'unknown'}`",
+        "",
+        "### Evidence",
+        "",
+        *continuation_evidence,
+        "",
+        "## Resolved State",
+        "",
+        f"- Latest user request: {resolved_state.get('latest_user_request') or 'n/a'}",
+        f"- Contextual user request: {contextual_request}",
+        f"- Request resolution status: `{resolution_status}`",
+        f"- Resolution summary: {resolved_state.get('resolution_summary') or 'n/a'}",
+        f"- Validation summary: {resolved_state.get('validation_summary') or 'n/a'}",
+        f"- Commit summary: {resolved_state.get('commit_summary') or 'n/a'}",
+        f"- Dirty state summary: {resolved_state.get('dirty_state_summary') or 'n/a'}",
+        f"- Remaining local-only paths: {remaining_local_paths}",
+        "",
+        "## Changed / Key Artifacts",
+        "",
+        f"- Summary: {changed_artifacts.get('summary') or 'n/a'}",
+        "",
+        "### Recommended Inspection Order",
+        "",
+        *inspection_order_lines,
+        "",
+        "### Changed Paths",
+        "",
+        *_artifact_markdown_lines(_as_list(changed_artifacts.get("changed_paths"))),
+        "",
+        "### Key Paths",
+        "",
+        *_artifact_markdown_lines(_as_list(changed_artifacts.get("key_paths"))),
+        "",
+        "## Decisions / Invariants",
+        "",
+        f"- Confidence: `{decisions_and_invariants.get('confidence') or 'unknown'}`",
+        "",
+        "### Decisions",
+        "",
+        *_memory_markdown_lines(_as_list(decisions_and_invariants.get("decisions"))),
+        "",
+        "### Invariants",
+        "",
+        *_memory_markdown_lines(_as_list(decisions_and_invariants.get("invariants"))),
+        "",
+        "### Rejected Paths",
+        "",
+        *_memory_markdown_lines(_as_list(decisions_and_invariants.get("rejected_paths"))),
+        "",
+        "### Open Architecture Questions",
+        "",
+        *_memory_markdown_lines(
+            _as_list(decisions_and_invariants.get("open_architecture_questions"))
+        ),
+        "",
+        "## Re-Entry Posture",
+        "",
+        f"- Role hint: `{reentry_posture.get('role_hint') or 'unknown'}`",
+        f"- Initial mode: `{reentry_posture.get('initial_mode') or 'unknown'}`",
+        (
+            "- Requires confirmation before changes: "
+            f"`{'yes' if reentry_posture.get('requires_confirmation_before_changes') else 'no'}`"
+        ),
+        "",
+        "### First Turn Contract",
+        "",
+        *[
+            f"- {item}"
+            for item in _as_list(reentry_posture.get("first_turn_contract"))
+        ],
+        "",
+        "## Restart Prompt",
+        "",
+        (
+            "Copy this into a fresh local session. It is a re-entry prompt, "
+            "not a live session resume."
+        ),
+        "",
+        "```text",
+        _string(restart_prompt.get("text")) or "n/a",
+        "```",
         "",
         "## Current State",
         "",
@@ -179,6 +290,59 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         f"- Known risks: {template.get('known_risks')}",
         "",
     ]
+
+    if compaction_summaries:
+        lines.extend(["## Compaction Summaries", ""])
+        for item in compaction_summaries:
+            summary = _as_dict(item)
+            timestamp = pretty_timestamp(_string(summary.get("timestamp")))
+            source_label = _string(summary.get("source")) or "context_compacted"
+            lines.extend(
+                [
+                    f"### {timestamp}",
+                    "",
+                    f"- Source: `{source_label}`",
+                ]
+            )
+            if summary.get("summary"):
+                lines.append(f"- Summary: {summary.get('summary')}")
+            if summary.get("prompt"):
+                lines.append(f"- Prompt: {summary.get('prompt')}")
+            lines.append("")
+
+    if linked_child_sessions:
+        lines.extend(["## Linked Child Sessions", ""])
+        for item in linked_child_sessions:
+            child = _as_dict(item)
+            title = _string(child.get("title")) or _string(child.get("child_session_id"))
+            session_id = _string(child.get("child_session_id"))
+            markdown_relpath = _string(child.get("markdown_relpath"))
+            handoff_relpath = _string(child.get("handoff_markdown_relpath"))
+            lines.extend(
+                [
+                    f"### {title}",
+                    "",
+                    f"- Session ID: `{session_id}`",
+                    f"- Status: `{child.get('status') or 'unknown'}`",
+                    f"- Updated: `{pretty_timestamp(_string(child.get('updated_at')))}`",
+                    f"- CWD: `{child.get('cwd') or 'n/a'}`",
+                ]
+            )
+            agent_label = _child_agent_label(child)
+            if agent_label:
+                lines.append(f"- Agent: {agent_label}")
+            if markdown_relpath:
+                transcript_href = _handoff_relpath(markdown_relpath)
+                lines.append(f"- Transcript: [{markdown_relpath}]({transcript_href})")
+            if handoff_relpath:
+                lines.append(
+                    f"- Handoff: [{handoff_relpath}]({_handoff_sibling_relpath(handoff_relpath)})"
+                )
+            if child.get("first_user_message"):
+                lines.append(f"- First user message: {child.get('first_user_message')}")
+            if child.get("latest_assistant_message"):
+                lines.append(f"- Latest assistant reply: {child.get('latest_assistant_message')}")
+            lines.append("")
 
     if recent_actions:
         lines.extend(["## Recent Actions (normalized)", ""])
@@ -275,26 +439,34 @@ def _build_handoff_payload(
     summary = _as_dict(metadata.get("summary"))
     redacted = bool(metadata.get("redacted"))
     redaction_context = RedactionContext.detect()
-    last_substantive_user_request = (
-        _last_substantive_user_request(parsed.user_messages)
-        if parsed
-        else _summary_substantive_user_request(summary)
-    )
+    latest_user_signal = _latest_substantive_user_signal(parsed=parsed, summary=summary)
+    last_substantive_user_request = latest_user_signal["text"]
     recent_actions = (
         _recent_actions(parsed.conversation_entries, redacted=redacted, context=redaction_context)
         if parsed
         else []
+    )
+    repo_state = _detect_repo_state(cwd)
+    resolved_state = _build_resolved_state(
+        parsed=parsed,
+        summary=summary,
+        latest_user_signal=latest_user_signal,
+        recent_actions=recent_actions,
+        repo_state=repo_state,
+        redacted=redacted,
+        context=redaction_context,
     )
     current_state = _build_current_state(
         parsed=parsed,
         summary=summary,
         last_substantive_user_request=last_substantive_user_request,
         recent_actions=recent_actions,
+        resolved_state=resolved_state,
     )
-    repo_state = _detect_repo_state(cwd)
     open_loops = _build_open_loops(
         parsed=parsed,
         current_state=current_state,
+        resolved_state=resolved_state,
         last_substantive_user_request=last_substantive_user_request,
         recent_actions=recent_actions,
         source_available=parsed is not None,
@@ -311,6 +483,13 @@ def _build_handoff_payload(
         handoff_markdown_relpath=handoff_markdown_relpath,
         handoff_json_relpath=handoff_json_relpath,
         reader_relpath=reader_relpath,
+    )
+    continuation_brief = _build_continuation_brief(
+        session_title=_string(metadata.get("title")),
+        current_state=current_state,
+        resolved_state=resolved_state,
+        open_loops=open_loops,
+        source_available=parsed is not None,
     )
 
     recent_window = (
@@ -338,6 +517,67 @@ def _build_handoff_payload(
         if parsed
         else []
     )
+    compaction_summaries = (
+        _compaction_summaries(
+            parsed.notable_events,
+            redacted=redacted,
+            context=redaction_context,
+        )
+        if parsed
+        else []
+    )
+    linked_child_sessions = _linked_child_sessions(
+        metadata=metadata,
+        out_dir=out_dir,
+        redacted=redacted,
+        context=redaction_context,
+    )
+    changed_artifacts = _build_changed_artifacts(
+        parsed=parsed,
+        resolved_state=resolved_state,
+        recent_window=recent_window,
+        repo_state=repo_state,
+        redacted=redacted,
+        context=redaction_context,
+    )
+    decisions_and_invariants = _build_decisions_and_invariants(
+        parsed=parsed,
+        continuation_brief=continuation_brief,
+        resolved_state=resolved_state,
+        changed_artifacts=changed_artifacts,
+        recent_window=recent_window,
+        redacted=redacted,
+        context=redaction_context,
+    )
+    artifacts = {
+        "metadata_relpath": str(metadata.get("metadata_relpath") or ""),
+        "markdown_relpath": str(metadata.get("markdown_relpath") or ""),
+        "reader_relpath": reader_relpath,
+        "handoff_markdown_relpath": handoff_markdown_relpath,
+        "handoff_json_relpath": handoff_json_relpath,
+        "repo_root": repo_state["repo_root"],
+        "repo_branch": repo_state["repo_branch"],
+        "repo_head_commit": repo_state["repo_head_commit"],
+        "repo_clean": repo_state["repo_clean"],
+        "repo_dirty_paths": repo_state["repo_dirty_paths"],
+    }
+    reentry_posture = _build_reentry_posture(
+        continuation_brief=continuation_brief,
+        resolved_state=resolved_state,
+        decisions_and_invariants=decisions_and_invariants,
+    )
+    restart_prompt = _build_restart_prompt(
+        session_id=session_id,
+        session_title=_string(metadata.get("title")),
+        artifacts=artifacts,
+        continuation_brief=continuation_brief,
+        resolved_state=resolved_state,
+        open_loops=open_loops,
+        reentry_posture=reentry_posture,
+        changed_artifacts=changed_artifacts,
+        decisions_and_invariants=decisions_and_invariants,
+        linked_child_sessions=linked_child_sessions,
+    )
 
     return {
         "handoff_schema_version": 1,
@@ -361,20 +601,16 @@ def _build_handoff_payload(
             "detail_line": summary.get("detail_line", ""),
             "one_line": summary.get("one_line", ""),
         },
+        "continuation_brief": continuation_brief,
+        "resolved_state": resolved_state,
         "current_state": current_state,
+        "changed_artifacts": changed_artifacts,
+        "decisions_and_invariants": decisions_and_invariants,
+        "reentry_posture": reentry_posture,
+        "restart_prompt": restart_prompt,
         "continuity_entry": continuity_entry,
         "open_loops": open_loops,
-        "artifacts": {
-            "metadata_relpath": str(metadata.get("metadata_relpath") or ""),
-            "markdown_relpath": str(metadata.get("markdown_relpath") or ""),
-            "reader_relpath": reader_relpath,
-            "handoff_markdown_relpath": handoff_markdown_relpath,
-            "handoff_json_relpath": handoff_json_relpath,
-            "repo_root": repo_state["repo_root"],
-            "repo_branch": repo_state["repo_branch"],
-            "repo_head_commit": repo_state["repo_head_commit"],
-            "repo_clean": repo_state["repo_clean"],
-        },
+        "artifacts": artifacts,
         "source_availability": {
             "available": parsed is not None,
             "exact_recent_window": parsed is not None,
@@ -389,6 +625,8 @@ def _build_handoff_payload(
         "recent_window": recent_window,
         "recent_notable_events": recent_events,
         "recent_tool_activity": recent_tools,
+        "compaction_summaries": compaction_summaries,
+        "linked_child_sessions": linked_child_sessions,
         "operator_note_template": {
             "what_matters_now": "",
             "next_step": "",
@@ -454,12 +692,1303 @@ def _iso_now() -> str:
     return datetime.now(tz=UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _latest_substantive_user_signal(
+    *,
+    parsed: ParsedSession | None,
+    summary: dict[str, Any],
+) -> dict[str, str]:
+    if parsed:
+        signals: list[dict[str, str]] = []
+        for block in reversed(parsed.conversation_entries):
+            if block.kind != "user":
+                continue
+            cleaned = _clean_user_request(block.text)
+            if cleaned and not _is_trivial_request(cleaned):
+                signals.append({"text": cleaned, "timestamp": block.timestamp or ""})
+                if len(signals) >= 2:
+                    break
+        if signals:
+            latest = signals[0]
+            previous = signals[1] if len(signals) > 1 else {"text": "", "timestamp": ""}
+            context_dependent = _is_context_dependent_request(latest["text"])
+            contextual_text = _contextual_user_request_text(
+                latest_request=latest["text"],
+                previous_request=previous["text"],
+                context_dependent=context_dependent,
+            )
+            return {
+                "text": latest["text"],
+                "timestamp": latest["timestamp"],
+                "previous_text": previous["text"],
+                "previous_timestamp": previous["timestamp"],
+                "is_context_dependent": "yes" if context_dependent else "no",
+                "contextual_text": contextual_text,
+            }
+    fallback = _summary_substantive_user_request(summary)
+    return {
+        "text": fallback,
+        "timestamp": "",
+        "previous_text": "",
+        "previous_timestamp": "",
+        "is_context_dependent": "no",
+        "contextual_text": fallback,
+    }
+
+
+def _build_resolved_state(
+    *,
+    parsed: ParsedSession | None,
+    summary: dict[str, Any],
+    latest_user_signal: dict[str, str],
+    recent_actions: list[str],
+    repo_state: dict[str, Any],
+    redacted: bool,
+    context: RedactionContext,
+) -> dict[str, str]:
+    latest_user_request = latest_user_signal.get("text", "")
+    latest_user_timestamp = latest_user_signal.get("timestamp", "")
+    contextual_user_request = latest_user_signal.get("contextual_text", latest_user_request)
+    completion_message = _latest_completion_message_after(
+        parsed,
+        timestamp=latest_user_timestamp,
+        redacted=redacted,
+        context=context,
+    )
+    latest_answer = completion_message or _latest_final_answer_after(
+        parsed,
+        timestamp=latest_user_timestamp,
+        redacted=redacted,
+        context=context,
+    )
+    fallback_answer = _string(summary.get("last_assistant_message"))
+
+    if parsed and _has_unresolved_aborted_turn(parsed):
+        status = "blocked"
+    elif latest_answer and recent_actions:
+        status = "handled_with_changes"
+    elif latest_answer:
+        status = "answered"
+    elif parsed is None and fallback_answer:
+        status = "derived_only"
+    elif latest_user_request:
+        status = "unanswered"
+    else:
+        status = "unknown"
+
+    resolution_summary = latest_answer or fallback_answer
+    if redacted:
+        resolution_summary = redact_text(resolution_summary, context).text
+
+    return {
+        "latest_user_request": latest_user_request,
+        "previous_user_request": latest_user_signal.get("previous_text", ""),
+        "latest_user_request_is_context_dependent": latest_user_signal.get(
+            "is_context_dependent",
+            "no",
+        ),
+        "contextual_user_request": contextual_user_request,
+        "request_resolution_status": status,
+        "resolution_summary": _excerpt_text(resolution_summary, limit=320),
+        "validation_summary": _validation_summary(recent_actions, status),
+        "commit_summary": _commit_summary(repo_state),
+        "dirty_state_summary": _dirty_state_summary(repo_state),
+        "remaining_local_only_paths": "unknown",
+    }
+
+
+def _build_continuation_brief(
+    *,
+    session_title: str,
+    current_state: dict[str, str],
+    resolved_state: dict[str, str],
+    open_loops: dict[str, str],
+    source_available: bool,
+) -> dict[str, Any]:
+    latest_request = _string(resolved_state.get("latest_user_request"))
+    contextual_request = _string(resolved_state.get("contextual_user_request")) or latest_request
+    resolution_status = _string(resolved_state.get("request_resolution_status"))
+    latest_resolved_request = contextual_request if resolution_status in {
+        "answered",
+        "handled_with_changes",
+        "completed",
+        "derived_only",
+    } else ""
+
+    evidence = []
+    has_resolution = resolution_status in {
+        "answered",
+        "handled_with_changes",
+        "completed",
+        "derived_only",
+    }
+    if source_available:
+        evidence.append("Local source session was available for exact recent context.")
+    if latest_request:
+        evidence.append("Latest substantive user request was extracted from the transcript.")
+    if resolved_state.get("latest_user_request_is_context_dependent") == "yes":
+        evidence.append(
+            "Latest request was context-dependent and expanded with the previous request."
+        )
+    if has_resolution and resolved_state.get("resolution_summary"):
+        evidence.append("Resolution summary comes from the latest final answer or task completion.")
+    if open_loops.get("operational_risk") != "none":
+        evidence.append(f"Operational risk: {open_loops.get('operational_risk')}")
+
+    return {
+        "what_we_were_doing": _excerpt_text(
+            current_state.get("current_focus") or contextual_request or session_title,
+            limit=220,
+        ),
+        "why_it_mattered": _why_it_mattered_text(contextual_request),
+        "latest_resolved_request": latest_resolved_request,
+        "last_meaningful_outcome": _string(current_state.get("last_meaningful_outcome")),
+        "next_best_action": _next_best_action_for_brief(
+            current_state=current_state,
+            resolved_state=resolved_state,
+            open_loops=open_loops,
+        ),
+        "do_not_do": (
+            "Do not treat this as a live provider resume; continue from derived "
+            "handoff artifacts only."
+        ),
+        "confidence": "high" if source_available and resolution_status in {
+            "answered",
+            "handled_with_changes",
+        } else "medium" if source_available else "low",
+        "evidence": evidence,
+    }
+
+
+def _build_changed_artifacts(
+    *,
+    parsed: ParsedSession | None,
+    resolved_state: dict[str, str],
+    recent_window: list[dict[str, Any]],
+    repo_state: dict[str, Any],
+    redacted: bool,
+    context: RedactionContext,
+) -> dict[str, Any]:
+    changed_paths: list[dict[str, str]] = []
+    key_paths: list[dict[str, str]] = []
+
+    if parsed:
+        for block in parsed.conversation_entries[-RECENT_ACTION_LOOKBACK:]:
+            if block.kind == "tool_output" and "Updated the following files:" in block.text:
+                for path in _updated_files_from_tool_output(block.text):
+                    _append_artifact(
+                        changed_paths,
+                        path=path,
+                        source="tool_output_updated_files",
+                        status="changed",
+                        note="Reported by recent tool output.",
+                        redacted=redacted,
+                        context=context,
+                    )
+
+    for item in _as_list(repo_state.get("repo_dirty_paths")):
+        artifact = _as_dict(item)
+        _append_artifact(
+            changed_paths,
+            path=_string(artifact.get("path")),
+            source="git_status",
+            status=_string(artifact.get("status")) or "dirty",
+            note="Repo has this path in git status.",
+            redacted=redacted,
+            context=context,
+        )
+
+    text_sources = [
+        _string(resolved_state.get("latest_user_request")),
+        _string(resolved_state.get("contextual_user_request")),
+        _string(resolved_state.get("resolution_summary")),
+    ]
+    text_sources.extend(
+        _string(item.get("text"))
+        for item in recent_window
+        if isinstance(item, dict)
+    )
+    for text in text_sources:
+        for path in _path_mentions_from_text(text):
+            _append_artifact(
+                key_paths,
+                path=path,
+                source="recent_text_path_mention",
+                status="referenced",
+                note="Mentioned in recent request, response, or summary.",
+                redacted=redacted,
+                context=context,
+            )
+
+    recommended = _recommended_inspection_order(changed_paths, key_paths)
+    summary = _changed_artifacts_summary(changed_paths, key_paths, recommended)
+    return {
+        "summary": summary,
+        "changed_paths": changed_paths[:20],
+        "key_paths": key_paths[:20],
+        "recommended_inspection_order": recommended[:10],
+    }
+
+
+def _append_artifact(
+    target: list[dict[str, str]],
+    *,
+    path: str,
+    source: str,
+    status: str,
+    note: str,
+    redacted: bool,
+    context: RedactionContext,
+) -> None:
+    normalized = _normalize_artifact_path(path)
+    if not normalized or _artifact_path_seen(target, normalized):
+        return
+    if redacted:
+        normalized = redact_text(normalized, context).text
+        note = redact_text(note, context).text
+    target.append(
+        {
+            "path": normalized,
+            "source": source,
+            "status": status,
+            "note": note,
+        }
+    )
+
+
+def _artifact_path_seen(items: list[dict[str, str]], path: str) -> bool:
+    return any(item.get("path") == path for item in items)
+
+
+def _path_mentions_from_text(text: str) -> list[str]:
+    paths: list[str] = []
+    for match in re.finditer(r"\[[^\]]+\]\(([^)]+)\)", text):
+        paths.append(match.group(1))
+    for match in re.finditer(r"`([^`]*(?:/|\\)[^`]*)`", text):
+        paths.append(match.group(1))
+    for match in re.finditer(
+        r"(?<![\w.-])(?:\.{0,2}/|/)[^\s)\],;:]+(?:\.[A-Za-z0-9_]+)(?::\d+)?",
+        text,
+    ):
+        paths.append(match.group(0))
+    return [_normalize_artifact_path(path) for path in paths if _normalize_artifact_path(path)]
+
+
+def _normalize_artifact_path(path: str) -> str:
+    cleaned = path.strip().strip("\"'")
+    if cleaned.startswith("<") and cleaned.endswith(">"):
+        cleaned = cleaned[1:-1].strip()
+    cleaned = cleaned.replace("\\", "/")
+    cleaned = re.sub(r"^file://", "", cleaned)
+    cleaned = re.sub(r":\d+(?::\d+)?$", "", cleaned)
+    cleaned = cleaned.rstrip(".,;)")
+    if not cleaned or cleaned.startswith(("http://", "https://")):
+        return ""
+    if "\n" in cleaned or len(cleaned) > 260:
+        return ""
+    if "/" not in cleaned and "." not in Path(cleaned).name:
+        return ""
+    return cleaned
+
+
+def _recommended_inspection_order(
+    changed_paths: list[dict[str, str]],
+    key_paths: list[dict[str, str]],
+) -> list[str]:
+    ordered: list[str] = []
+    for item in [*key_paths, *changed_paths]:
+        path = item.get("path", "")
+        if not path or path in ordered:
+            continue
+        ordered.append(path)
+    return ordered
+
+
+def _changed_artifacts_summary(
+    changed_paths: list[dict[str, str]],
+    key_paths: list[dict[str, str]],
+    recommended: list[str],
+) -> str:
+    if not changed_paths and not key_paths:
+        return "No concrete artifact paths were extracted from the recent handoff context."
+    return (
+        f"Extracted {len(changed_paths)} changed path(s), {len(key_paths)} key "
+        f"path(s), and {len(recommended)} recommended inspection target(s)."
+    )
+
+
+def _artifact_markdown_lines(items: list[Any]) -> list[str]:
+    if not items:
+        return ["- none"]
+    lines: list[str] = []
+    for item in items:
+        artifact = _as_dict(item)
+        path = _string(artifact.get("path")) or "unknown"
+        status = _string(artifact.get("status")) or "unknown"
+        source = _string(artifact.get("source")) or "unknown"
+        note = _string(artifact.get("note"))
+        suffix = f" - {note}" if note else ""
+        lines.append(f"- `{path}` (`{status}`, `{source}`){suffix}")
+    return lines
+
+
+def _build_decisions_and_invariants(
+    *,
+    parsed: ParsedSession | None,
+    continuation_brief: dict[str, Any],
+    resolved_state: dict[str, str],
+    changed_artifacts: dict[str, Any],
+    recent_window: list[dict[str, Any]],
+    redacted: bool,
+    context: RedactionContext,
+) -> dict[str, Any]:
+    decisions: list[dict[str, str]] = []
+    invariants: list[dict[str, str]] = []
+    rejected_paths: list[dict[str, str]] = []
+    open_questions: list[dict[str, str]] = []
+
+    sources = [
+        ("continuation_brief", _string(continuation_brief.get("what_we_were_doing"))),
+        ("continuation_brief", _string(continuation_brief.get("last_meaningful_outcome"))),
+        ("resolved_state", _string(resolved_state.get("contextual_user_request"))),
+        ("resolved_state", _string(resolved_state.get("resolution_summary"))),
+        ("changed_artifacts", _string(changed_artifacts.get("summary"))),
+    ]
+    if parsed:
+        sources.extend(_structural_memory_sources(parsed))
+        sources.extend(
+            ("recent_window", block.text)
+            for block in parsed.conversation_entries[-8:]
+            if block.kind in {"user", "assistant"}
+        )
+    else:
+        sources.extend(
+            ("recent_window", _string(item.get("text")))
+            for item in recent_window
+            if isinstance(item, dict) and item.get("kind") in {"user", "assistant"}
+        )
+
+    for source, text in sources:
+        for candidate in _memory_candidates_from_text(text):
+            item = _memory_item(
+                candidate,
+                source=source,
+                redacted=redacted,
+                context=context,
+            )
+            if _is_rejected_path(candidate):
+                _append_memory_item(rejected_paths, item)
+            elif _is_open_architecture_question(candidate):
+                _append_memory_item(open_questions, item)
+            elif _is_invariant(candidate):
+                _append_memory_item(invariants, item)
+            elif _is_decision(candidate):
+                _append_memory_item(decisions, item)
+
+    confidence = "medium"
+    if decisions or invariants or rejected_paths:
+        confidence = "high"
+    if not decisions and not invariants and not rejected_paths and not open_questions:
+        confidence = "low"
+
+    return {
+        "decisions": decisions[:8],
+        "invariants": invariants[:8],
+        "rejected_paths": rejected_paths[:8],
+        "open_architecture_questions": open_questions[:8],
+        "evidence": _memory_evidence(decisions, invariants, rejected_paths, open_questions),
+        "confidence": confidence,
+    }
+
+
+def _structural_memory_sources(parsed: ParsedSession) -> list[tuple[str, str]]:
+    sources: list[tuple[str, str]] = []
+    for block in parsed.context_entries:
+        candidates = _structural_memory_candidates_from_text(block.text)
+        if candidates:
+            sources.append(
+                (
+                    "context_structural_memory",
+                    "\n".join(f"- {candidate}" for candidate in candidates),
+                )
+            )
+    return sources
+
+
+def _structural_memory_candidates_from_text(text: str) -> list[str]:
+    if not _has_structural_memory_signal(text):
+        return []
+
+    candidates: list[str] = []
+    active_label = ""
+    parent_item = ""
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        is_nested_item = raw_line.startswith((" ", "\t"))
+
+        heading = _structural_memory_heading(line)
+        if heading:
+            active_label = heading
+            parent_item = ""
+            continue
+
+        if line.startswith("#"):
+            active_label = ""
+            parent_item = ""
+            continue
+
+        list_item = _structural_list_item(line)
+        if not list_item:
+            continue
+        if not active_label:
+            continue
+
+        if parent_item and not is_nested_item:
+            parent_item = ""
+
+        if _line_introduces_nested_list(list_item):
+            parent_item = list_item.rstrip(":")
+            continue
+        elif parent_item and is_nested_item:
+            candidate = _structural_candidate(active_label, f"{parent_item}: {list_item}")
+        else:
+            candidate = _structural_candidate(active_label, list_item)
+
+        if candidate and _has_memory_signal(candidate):
+            candidates.append(candidate)
+
+    return candidates[:64]
+
+
+def _has_structural_memory_signal(text: str) -> bool:
+    lowered = text.lower()
+    if (
+        "continue from a local extractive handoff" in lowered
+        or "first response contract" in lowered
+    ):
+        return False
+    markers = (
+        "strategic decisions already made",
+        "stable boundary",
+        "product identity",
+        "current intended identity",
+        "repo boundaries",
+        "public boundary",
+        "support matrix",
+        "source of truth",
+        "non-goals",
+        "non-goals",
+        "ownership",
+        "does not own",
+        "do not want",
+        "explicitly chose",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _structural_memory_heading(line: str) -> str:
+    stripped = line.strip()
+    looks_like_heading = stripped.startswith("#") or (
+        stripped.endswith(":") and not _is_memory_bullet_line(stripped)
+    )
+    if not looks_like_heading:
+        return ""
+    cleaned = line.strip().strip("# ").strip()
+    cleaned = cleaned.rstrip(":").strip()
+    lowered = cleaned.lower()
+    accepted = (
+        "strategic decisions already made",
+        "stable boundary",
+        "product identity",
+        "current intended identity",
+        "current state",
+        "important caveat",
+        "known risks",
+        "what it does not do",
+        "what does not do",
+        "non-goals",
+        "non-goals",
+    )
+    if lowered in accepted:
+        return cleaned
+    if lowered.endswith("boundary") or lowered.endswith("ownership"):
+        return cleaned
+    return ""
+
+
+def _structural_list_item(line: str) -> str:
+    cleaned = re.sub(r"^(?:[-•*]|\d+[.)])\s+", "", line).strip()
+    if cleaned == line and not re.match(r"^\d+[.)]\s+", line):
+        return ""
+    return cleaned
+
+
+def _line_introduces_nested_list(line: str) -> bool:
+    lowered = line.lower()
+    return line.endswith(":") or lowered.endswith("does not own")
+
+
+def _structural_candidate(label: str, text: str) -> str:
+    cleaned = text.strip()
+    if not cleaned:
+        return ""
+    if label:
+        cleaned = f"{label}: {cleaned}"
+    return _excerpt_text(cleaned, limit=240)
+
+
+def _memory_candidates_from_text(text: str) -> list[str]:
+    segments = _memory_text_segments(_strip_memory_ide_wrapper(text))
+    if not segments:
+        return []
+    candidates: list[str] = []
+    for segment in segments:
+        for part in _memory_segment_parts(segment):
+            cleaned = _clean_memory_statement(part)
+            if not cleaned:
+                continue
+            if len(cleaned) < 24 or len(cleaned) > 260:
+                continue
+            if _has_memory_signal(cleaned):
+                candidates.append(cleaned)
+    return candidates
+
+
+def _memory_text_segments(text: str) -> list[str]:
+    segments: list[str] = []
+    paragraph: list[str] = []
+
+    def flush_paragraph() -> None:
+        if paragraph:
+            segments.append(" ".join(paragraph))
+            paragraph.clear()
+
+    for raw_line in text.strip().splitlines():
+        line = raw_line.strip()
+        if not line:
+            flush_paragraph()
+            continue
+        if _is_memory_bullet_line(line):
+            flush_paragraph()
+            segments.append(line)
+            continue
+        paragraph.append(line)
+    flush_paragraph()
+    return segments
+
+
+def _memory_segment_parts(segment: str) -> list[str]:
+    normalized = " ".join(segment.strip().split())
+    if not normalized:
+        return []
+    normalized = re.sub(r"^(?:[-•*]|\d+[.)])\s+", "", normalized)
+    return re.split(r"(?<=[.!?])\s+", normalized)
+
+
+def _is_memory_bullet_line(line: str) -> bool:
+    return re.match(r"^(?:[-•*]|\d+[.)])\s+", line) is not None
+
+
+def _clean_memory_statement(text: str) -> str:
+    cleaned = text.strip().strip("-•* ")
+    cleaned = re.sub(r"^\*\*[^*]+\*\*\s*", "", cleaned)
+    cleaned = re.sub(r"^Sum\s+\d+:\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", cleaned)
+    cleaned = cleaned.replace("**", "")
+    cleaned = cleaned.strip().strip("\"'")
+    lowered = cleaned.lower()
+    if "exact validation" in lowered or "validation commands" in lowered:
+        return ""
+    if lowered.startswith(("si querés", "si queres", "if you want")):
+        return ""
+    if cleaned.endswith(":") and len(cleaned) < 120:
+        return ""
+    return _excerpt_text(cleaned, limit=240)
+
+
+def _strip_memory_ide_wrapper(text: str) -> str:
+    stripped = text.strip()
+    marker_match = re.search(r"#{0,6}\s*My request for Codex:\s*", stripped)
+    if marker_match:
+        return stripped[marker_match.end() :].strip()
+    if "# Context from my IDE setup" not in stripped and "## Open tabs:" not in stripped:
+        return stripped
+
+    filtered_lines: list[str] = []
+    skip_open_tabs = False
+    for raw_line in stripped.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        lowered = line.lower()
+        if lowered.startswith("# context from my ide setup"):
+            continue
+        if lowered.startswith("## active file:"):
+            continue
+        if lowered.startswith("## open tabs:"):
+            skip_open_tabs = True
+            continue
+        if skip_open_tabs:
+            if line.startswith("-"):
+                continue
+            if line.startswith("#"):
+                skip_open_tabs = False
+            else:
+                continue
+        filtered_lines.append(raw_line)
+    return "\n".join(filtered_lines).strip()
+
+
+def _has_memory_signal(text: str) -> bool:
+    lowered = text.lower()
+    markers = (
+        "prueba que",
+        "valida",
+        "aprendimos",
+        "candidate supply",
+        "lane",
+        "separada",
+        "separado",
+        "rescue",
+        "no deployable",
+        "no como solución",
+        "no como solucion",
+        "no promover",
+        "no mezclar",
+        "score",
+        "siguiente paso",
+        "next step",
+        "faltaba",
+        "limitado",
+        "limited",
+        "arquitectura",
+        "infrastructure",
+        "retrieval",
+        "hypothesis",
+        "hipótesis",
+        "hipotesis",
+        "strategic decisions",
+        "stable boundary",
+        "product identity",
+        "source of truth",
+        "public boundary",
+        "support matrix",
+        "repo-owned",
+        "ownership",
+        "does not own",
+        "workflow truth",
+        "provider/session/thread",
+        "transport/control",
+        "explicitly chose",
+        "new repo",
+        "do not want",
+        "no workflow runtime",
+        "no workstation continuity ownership",
+        "no daemon",
+        "no polling",
+        "no slack truth",
+        "fail-closed",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _memory_item(
+    statement: str,
+    *,
+    source: str,
+    redacted: bool,
+    context: RedactionContext,
+) -> dict[str, str]:
+    rendered = redact_text(statement, context).text if redacted else statement
+    return {
+        "statement": rendered,
+        "source": source,
+        "confidence": "medium",
+    }
+
+
+def _append_memory_item(target: list[dict[str, str]], item: dict[str, str]) -> None:
+    statement = item.get("statement", "")
+    normalized = _normalize_for_matching(statement)
+    if not normalized:
+        return
+    for existing in target:
+        existing_statement = _normalize_for_matching(existing.get("statement", ""))
+        if normalized == existing_statement:
+            return
+        if normalized in existing_statement or existing_statement in normalized:
+            return
+    target.append(item)
+
+
+def _is_decision(text: str) -> bool:
+    lowered = text.lower()
+    markers = (
+        "prueba que",
+        "valida",
+        "aprendimos",
+        "implemented",
+        "added",
+        "chose",
+        "chosen",
+        "explicitly chose",
+        "decided",
+        "decision",
+        "validated",
+        "validation passed",
+        "funcionó",
+        "funciono",
+        "smoke",
+        "siguiente paso",
+        "next step",
+        "conviene",
+        "lo haría",
+        "lo haria",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _is_invariant(text: str) -> bool:
+    lowered = text.lower()
+    markers = (
+        "candidate supply",
+        "lane",
+        "separada",
+        "separado",
+        "rescue gate",
+        "arquitectura",
+        "architecture",
+        "stable boundary",
+        "product identity",
+        "source of truth",
+        "public boundary",
+        "support matrix",
+        "repo-owned",
+        "ownership",
+        "workflow truth",
+        "transport/control",
+        "no workflow runtime",
+        "no workstation continuity ownership",
+        "no daemon",
+        "no polling",
+        "no slack truth",
+        "fail-closed",
+        "debe",
+        "must",
+        "read-only",
+        "dirty repo",
+        "no tocar",
+        "no revert",
+        "sin promoción",
+        "sin promocion",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _is_rejected_path(text: str) -> bool:
+    lowered = text.lower()
+    negative_markers = (
+        "no deployable",
+        "not deployable",
+        "no como solución",
+        "no como solucion",
+        "no promover",
+        "no mezclar",
+        "should not live",
+        "do not want to depend",
+        "not replace it",
+        "sin promoción automática",
+        "sin promocion automatica",
+    )
+    return any(marker in lowered for marker in negative_markers)
+
+
+def _is_open_architecture_question(text: str) -> bool:
+    lowered = text.lower()
+    if "?" in text:
+        return True
+    markers = (
+        "siguiente paso",
+        "next step",
+        "queda pendiente",
+        "queda por",
+        "todavía queda",
+        "todavia queda",
+        "pending",
+        "pendiente",
+        "habría que",
+        "habria que",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _memory_evidence(*groups: list[dict[str, str]]) -> list[str]:
+    sources: list[str] = []
+    for group in groups:
+        for item in group:
+            source = item.get("source", "")
+            if source and source not in sources:
+                sources.append(source)
+    return [f"Extracted from {source}." for source in sources]
+
+
+def _memory_markdown_lines(items: list[Any]) -> list[str]:
+    if not items:
+        return ["- none"]
+    lines: list[str] = []
+    for item in items:
+        memory = _as_dict(item)
+        statement = _string(memory.get("statement")) or _string(item)
+        source = _string(memory.get("source")) or "unknown"
+        confidence = _string(memory.get("confidence")) or "unknown"
+        lines.append(f"- {statement} (`{source}`, `{confidence}`)")
+    return lines
+
+
+def _build_restart_prompt(
+    *,
+    session_id: str,
+    session_title: str,
+    artifacts: dict[str, Any],
+    continuation_brief: dict[str, Any],
+    resolved_state: dict[str, str],
+    open_loops: dict[str, str],
+    reentry_posture: dict[str, Any],
+    changed_artifacts: dict[str, Any],
+    decisions_and_invariants: dict[str, Any],
+    linked_child_sessions: list[dict[str, str]],
+) -> dict[str, str]:
+    repo_state = (
+        "clean"
+        if artifacts.get("repo_clean") is True
+        else "dirty"
+        if artifacts.get("repo_clean") is False
+        else "unknown"
+    )
+    child_lines = _restart_prompt_child_lines(linked_child_sessions)
+    contract_lines = [
+        f"- {item}"
+        for item in _as_list(reentry_posture.get("first_turn_contract"))
+    ]
+    inspection_lines = _restart_prompt_path_lines(
+        _as_list(changed_artifacts.get("recommended_inspection_order"))
+    )
+    decision_lines = _restart_prompt_memory_lines(
+        _as_list(decisions_and_invariants.get("decisions")),
+        fallback="none",
+    )
+    invariant_lines = _restart_prompt_memory_lines(
+        _as_list(decisions_and_invariants.get("invariants")),
+        fallback="none",
+    )
+    rejected_lines = _restart_prompt_memory_lines(
+        _as_list(decisions_and_invariants.get("rejected_paths")),
+        fallback="none",
+    )
+    text_lines = [
+        "Continue from a local extractive handoff. Do not treat this as a live provider resume.",
+        "Initial operating mode: read-only context retrieval and review only.",
+        (
+            "Do not run commands, inspect files, edit files, create files, or "
+            "run tests in the first response."
+        ),
+        (
+            "Before taking action, ask the user to confirm the desired mode: "
+            "review, plan, or implement."
+        ),
+        "",
+        f"Session: {session_title or session_id}",
+        f"Session ID: {session_id}",
+        f"Repo root: {artifacts.get('repo_root') or 'n/a'}",
+        f"Branch: {artifacts.get('repo_branch') or 'n/a'}",
+        f"HEAD: {artifacts.get('repo_head_commit') or 'n/a'}",
+        f"Repo state: {repo_state}",
+        "",
+        "Re-entry posture:",
+        f"- Role hint: {reentry_posture.get('role_hint') or 'unknown'}",
+        f"- Initial mode: {reentry_posture.get('initial_mode') or 'unknown'}",
+        "- Requires confirmation before changes: yes",
+        "",
+        "First response contract:",
+        *contract_lines,
+        "",
+        "Continuation brief:",
+        f"- What we were doing: {continuation_brief.get('what_we_were_doing') or 'n/a'}",
+        f"- Latest resolved request: {continuation_brief.get('latest_resolved_request') or 'n/a'}",
+        f"- Last meaningful outcome: {continuation_brief.get('last_meaningful_outcome') or 'n/a'}",
+        f"- Next best action: {continuation_brief.get('next_best_action') or 'n/a'}",
+        "",
+        "Resolved state:",
+        f"- Latest user request: {resolved_state.get('latest_user_request') or 'n/a'}",
+        f"- Contextual user request: {resolved_state.get('contextual_user_request') or 'n/a'}",
+        f"- Resolution status: {resolved_state.get('request_resolution_status') or 'unknown'}",
+        f"- Resolution summary: {resolved_state.get('resolution_summary') or 'n/a'}",
+        f"- Validation summary: {resolved_state.get('validation_summary') or 'n/a'}",
+        f"- Dirty state summary: {resolved_state.get('dirty_state_summary') or 'n/a'}",
+        "",
+        "Changed / key artifacts:",
+        f"- Summary: {changed_artifacts.get('summary') or 'n/a'}",
+        "- Recommended inspection order:",
+        *inspection_lines,
+        "",
+        "Decisions and invariants:",
+        "- Decisions:",
+        *decision_lines,
+        "- Invariants:",
+        *invariant_lines,
+        "- Rejected paths:",
+        *rejected_lines,
+        "",
+        "Open loops and risks:",
+        f"- Pending validation: {open_loops.get('pending_validation') or 'none'}",
+        f"- Open question: {open_loops.get('open_question') or 'none'}",
+        f"- Unresolved failure: {open_loops.get('unresolved_failure') or 'none'}",
+        f"- Operational risk: {open_loops.get('operational_risk') or 'none'}",
+        "",
+        "Linked child sessions:",
+        *child_lines,
+        "",
+        "Artifact links:",
+        f"- Handoff Markdown: {artifacts.get('handoff_markdown_relpath') or 'n/a'}",
+        f"- Handoff JSON: {artifacts.get('handoff_json_relpath') or 'n/a'}",
+        f"- Transcript: {artifacts.get('markdown_relpath') or 'n/a'}",
+        f"- Reader: {artifacts.get('reader_relpath') or 'n/a'}",
+        "",
+        (
+            "First action: answer with the First response contract only, then wait "
+            "for user confirmation before using tools or changing files."
+        ),
+    ]
+    text = "\n".join(text_lines)
+    return {
+        "kind": "fresh_session_reentry",
+        "text": _excerpt_text(text, limit=5000),
+    }
+
+
+def _restart_prompt_path_lines(paths: list[Any]) -> list[str]:
+    if not paths:
+        return ["  - none"]
+    return [f"  - {_string(path)}" for path in paths[:8]]
+
+
+def _restart_prompt_memory_lines(items: list[Any], *, fallback: str) -> list[str]:
+    if not items:
+        return [f"  - {fallback}"]
+    lines: list[str] = []
+    for item in items[:5]:
+        memory = _as_dict(item)
+        statement = _string(memory.get("statement")) or _string(item)
+        if statement:
+            lines.append(f"  - {statement}")
+    return lines or [f"  - {fallback}"]
+
+
+def _build_reentry_posture(
+    *,
+    continuation_brief: dict[str, Any],
+    resolved_state: dict[str, str],
+    decisions_and_invariants: dict[str, Any],
+) -> dict[str, Any]:
+    memory_hints = _reentry_memory_hints(decisions_and_invariants)
+    haystack = " ".join(
+        (
+            _string(continuation_brief.get("what_we_were_doing")),
+            _string(continuation_brief.get("last_meaningful_outcome")),
+            _string(resolved_state.get("latest_user_request")),
+            _string(resolved_state.get("contextual_user_request")),
+            _string(resolved_state.get("resolution_summary")),
+            *memory_hints,
+        )
+    ).lower()
+    role_hint = (
+        "architect_reviewer"
+        if _looks_like_review_posture(haystack)
+        else "operator_reviewer"
+    )
+    return {
+        "role_hint": role_hint,
+        "initial_mode": "read_only_context_retrieval",
+        "requires_confirmation_before_changes": True,
+        "allowed_first_turn_actions": [
+            "summarize_recovered_context",
+            "infer_prior_session_posture",
+            "list_candidate_next_steps",
+            "ask_user_to_confirm_mode",
+        ],
+        "forbidden_first_turn_actions": [
+            "run_commands",
+            "inspect_files",
+            "edit_files",
+            "create_files",
+            "run_tests",
+            "start_implementation",
+        ],
+        "first_turn_contract": [
+            "Do not use tools or inspect files in the first response.",
+            "Do not implement, edit, create files, or run tests in the first response.",
+            "Summarize the recovered context from this prompt.",
+            "State the inferred prior-session role/posture.",
+            "List the next steps you would take if confirmed.",
+            "Ask the user to choose one mode before acting: review, plan, or implement.",
+        ],
+    }
+
+
+def _reentry_memory_hints(decisions_and_invariants: dict[str, Any]) -> list[str]:
+    hints: list[str] = []
+    for key in (
+        "decisions",
+        "invariants",
+        "rejected_paths",
+        "open_architecture_questions",
+    ):
+        for item in _as_list(decisions_and_invariants.get(key)):
+            memory = _as_dict(item)
+            hint = _string(memory.get("statement")) or _string(item)
+            if hint:
+                hints.append(hint)
+    return hints
+
+
+def _looks_like_review_posture(text: str) -> bool:
+    markers = (
+        "summary",
+        "summaries",
+        "review",
+        "reviewer",
+        "architect",
+        "arquitect",
+        "qué aprendimos",
+        "que aprendimos",
+        "conceptualmente",
+        "arquitectura",
+        "architecture",
+        "boundary",
+        "boundaries",
+        "ownership",
+        "stable boundary",
+        "public boundary",
+        "no como solución deployable",
+        "no como solucion deployable",
+        "sirve como prueba",
+        "agente nuevo",
+        "subagents",
+        "prompt",
+        "hipótesis",
+        "hipotesis",
+    )
+    return any(marker in text for marker in markers)
+
+
+def _restart_prompt_child_lines(
+    linked_child_sessions: list[dict[str, str]],
+) -> list[str]:
+    if not linked_child_sessions:
+        return ["- none"]
+    lines: list[str] = []
+    for child in linked_child_sessions[:5]:
+        title = child.get("title") or child.get("child_session_id") or "Untitled child"
+        status = child.get("status") or "unknown"
+        session_id = child.get("child_session_id") or "unknown"
+        lines.append(f"- {title} ({session_id}, {status})")
+    return lines
+
+
+def _why_it_mattered_text(latest_request: str) -> str:
+    if not latest_request:
+        return "The handoff needs to preserve the latest working context for re-entry."
+    return _excerpt_text(
+        f"The latest request needed a continuation path for: {latest_request}",
+        limit=260,
+    )
+
+
+def _contextual_user_request_text(
+    *,
+    latest_request: str,
+    previous_request: str,
+    context_dependent: bool,
+) -> str:
+    if not context_dependent or not previous_request:
+        return latest_request
+    return _excerpt_text(
+        f"{previous_request} Follow-up request: {latest_request}",
+        limit=360,
+    )
+
+
+def _is_context_dependent_request(text: str) -> bool:
+    normalized = _normalize_for_matching(text)
+    if not normalized:
+        return False
+    if normalized in {
+        "pasamelo",
+        "pasalo",
+        "pasame eso",
+        "pasame el prompt",
+        "pasame la prompt",
+        "mandamelo",
+        "mandalo",
+        "eso",
+        "ese",
+        "esa",
+        "esa opcion",
+        "esa opción",
+        "ese camino",
+        "lo anterior",
+        "lo de arriba",
+        "el prompt",
+        "la prompt",
+    }:
+        return True
+    if any(
+        normalized.startswith(prefix)
+        for prefix in (
+            "pasamelo ",
+            "pasalo ",
+            "pasame ",
+            "mandamelo ",
+            "mandalo ",
+            "hacelo ",
+            "hagamos eso",
+        )
+    ):
+        return True
+    words = normalized.split()
+    if len(words) > 6 or len(normalized) > 80:
+        return False
+    return False
+
+
+def _normalize_for_matching(text: str) -> str:
+    replacements = str.maketrans(
+        {
+            "á": "a",
+            "é": "e",
+            "í": "i",
+            "ó": "o",
+            "ú": "u",
+            "ü": "u",
+            "Á": "a",
+            "É": "e",
+            "Í": "i",
+            "Ó": "o",
+            "Ú": "u",
+            "Ü": "u",
+        }
+    )
+    lowered = text.strip().lower().translate(replacements)
+    lowered = re.sub(r"[¿?¡!.,;:]+", "", lowered)
+    return " ".join(lowered.split())
+
+
+def _next_best_action_for_brief(
+    *,
+    current_state: dict[str, str],
+    resolved_state: dict[str, str],
+    open_loops: dict[str, str],
+) -> str:
+    if open_loops.get("unresolved_failure") != "none":
+        return "Inspect the unresolved failure before making further changes."
+    expected_next_command = _string(open_loops.get("expected_next_command"))
+    if expected_next_command and expected_next_command != "none":
+        return f"Run `{expected_next_command}` or resolve why it is still pending."
+    if resolved_state.get("request_resolution_status") == "answered":
+        return (
+            "Continue from the resolution summary and decide the next concrete "
+            "implementation or analysis step."
+        )
+    return _string(current_state.get("next_recommended_action"))
+
+
+def _latest_completion_message_after(
+    parsed: ParsedSession | None,
+    *,
+    timestamp: str,
+    redacted: bool,
+    context: RedactionContext,
+) -> str:
+    if parsed is None:
+        return ""
+    for event in reversed(parsed.notable_events):
+        label = event.label.lower()
+        if "task_complete" not in label and "item_completed" not in label:
+            continue
+        if timestamp and not _timestamp_after(event.timestamp, timestamp):
+            continue
+        payload = _parse_tool_call_json(event.text)
+        message = _text_value(payload.get("last_agent_message"))
+        if redacted:
+            message = redact_text(message, context).text
+        if message:
+            return _excerpt_text(message, limit=500)
+    return ""
+
+
+def _latest_final_answer_after(
+    parsed: ParsedSession | None,
+    *,
+    timestamp: str,
+    redacted: bool,
+    context: RedactionContext,
+) -> str:
+    if parsed is None:
+        return ""
+    for block in reversed(parsed.conversation_entries):
+        if block.kind != "assistant":
+            continue
+        if timestamp and not _timestamp_after(block.timestamp, timestamp):
+            continue
+        label = block.label.lower()
+        if "final_answer" not in label and label != "assistant":
+            continue
+        text = block.text
+        if redacted:
+            text = redact_text(text, context).text
+        return _excerpt_text(text, limit=500)
+    return ""
+
+
+def _timestamp_after(candidate: str | None, reference: str) -> bool:
+    if not candidate:
+        return False
+    return candidate > reference
+
+
+def _validation_summary(recent_actions: list[str], resolution_status: str) -> str:
+    validation_actions = [
+        action for action in recent_actions if action.startswith("ran ")
+    ]
+    if validation_actions:
+        return "; ".join(validation_actions[:3])
+    if resolution_status == "answered":
+        return "No validation was needed for the latest answer-only turn."
+    return "No recent validation signal was detected."
+
+
+def _commit_summary(repo_state: dict[str, Any]) -> str:
+    branch = _string(repo_state.get("repo_branch")) or "unknown branch"
+    head = _string(repo_state.get("repo_head_commit")) or "unknown HEAD"
+    return f"HEAD `{head}` on `{branch}`."
+
+
+def _dirty_state_summary(repo_state: dict[str, Any]) -> str:
+    if repo_state.get("repo_clean") is True:
+        return "Repo appears clean."
+    if repo_state.get("repo_clean") is False:
+        return "Repo has uncommitted changes."
+    return "Repo state could not be determined."
+
+
 def _build_current_state(
     *,
     parsed: ParsedSession | None,
     summary: dict[str, Any],
     last_substantive_user_request: str,
     recent_actions: list[str],
+    resolved_state: dict[str, str],
 ) -> dict[str, str]:
     status = "in_progress"
     if parsed and parsed.notable_events:
@@ -470,15 +1999,30 @@ def _build_current_state(
         elif "task_complete" in lowered or "item_completed" in lowered:
             status = "done"
 
-    current_focus = _current_focus_text(
-        last_substantive_user_request or _string(summary.get("preview"))
-    )
-    last_meaningful_outcome = recent_actions[0] if recent_actions else _string(
-        summary.get("last_assistant_message")
+    contextual_request = _string(resolved_state.get("contextual_user_request"))
+    if resolved_state.get("latest_user_request_is_context_dependent") == "yes":
+        current_focus = _excerpt_text(contextual_request, limit=180)
+    else:
+        current_focus = _current_focus_text(
+            contextual_request
+            or last_substantive_user_request
+            or _string(summary.get("preview"))
+        )
+    last_meaningful_outcome = (
+        recent_actions[0]
+        if recent_actions
+        else _string(resolved_state.get("resolution_summary"))
+        or _string(summary.get("last_assistant_message"))
     )
     if status == "blocked":
         next_action = "Inspect the latest aborted turn or failing command before continuing."
         blocker = "Latest turn or task ended in an aborted state."
+    elif status == "done" and resolved_state.get("request_resolution_status") == "answered":
+        next_action = (
+            "Continue from Resolved State and use the latest answer as the "
+            "starting point for the next concrete change."
+        )
+        blocker = "none"
     elif status == "done":
         next_action = (
             "Review the handoff artifacts and decide whether to start a "
@@ -526,6 +2070,7 @@ def _build_open_loops(
     *,
     parsed: ParsedSession | None,
     current_state: dict[str, str],
+    resolved_state: dict[str, str],
     last_substantive_user_request: str,
     recent_actions: list[str],
     source_available: bool,
@@ -546,9 +2091,14 @@ def _build_open_loops(
         if validation_ran or current_state.get("status") == "done"
         else "Current changes have not been revalidated yet."
     )
+    request_answered = resolved_state.get("request_resolution_status") in {
+        "answered",
+        "handled_with_changes",
+        "completed",
+    }
     open_question = (
         last_substantive_user_request
-        if last_substantive_user_request.rstrip().endswith("?")
+        if last_substantive_user_request.rstrip().endswith("?") and not request_answered
         else "none"
     )
     if unresolved_failure != "none":
@@ -668,6 +2218,288 @@ def _recent_actions(
             break
 
     return actions
+
+
+def _compaction_summaries(
+    notable_events: list[RenderBlock],
+    *,
+    redacted: bool,
+    context: RedactionContext,
+) -> list[dict[str, str]]:
+    summaries: list[dict[str, str]] = []
+    for block in notable_events:
+        if "context_compacted" not in block.label:
+            continue
+        payload = _parse_tool_call_json(block.text)
+        summary = _first_text_value(
+            payload,
+            (
+                "summary",
+                "context_summary",
+                "compacted_summary",
+                "message",
+                "text",
+            ),
+        )
+        prompt = _first_text_value(
+            payload,
+            (
+                "prompt",
+                "compaction_prompt",
+                "instructions",
+                "system_prompt",
+            ),
+        )
+        if redacted:
+            summary = redact_text(summary, context).text
+            prompt = redact_text(prompt, context).text
+        summary = _excerpt_text(summary, limit=700)
+        prompt = _excerpt_text(prompt, limit=700)
+        if not summary and not prompt:
+            continue
+        summaries.append(
+            {
+                "timestamp": block.timestamp or "",
+                "source": "context_compacted",
+                "summary": summary,
+                "prompt": prompt,
+            }
+        )
+    return summaries[-5:]
+
+
+def _first_text_value(payload: dict[str, Any], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        text = _text_value(payload.get(key))
+        if text:
+            return text
+    return ""
+
+
+def _text_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return " ".join(value.strip().split())
+    if isinstance(value, list):
+        parts = [_text_value(item) for item in value]
+        return " ".join(part for part in parts if part)
+    if isinstance(value, dict):
+        for key in ("text", "summary", "message", "content"):
+            text = _text_value(value.get(key))
+            if text:
+                return text
+        return ""
+    return " ".join(str(value).strip().split())
+
+
+def _linked_child_sessions(
+    *,
+    metadata: dict[str, Any],
+    out_dir: Path,
+    redacted: bool,
+    context: RedactionContext,
+) -> list[dict[str, str]]:
+    parent_session_id = _string(metadata.get("session_id"))
+    codex_home = _infer_codex_home(metadata)
+    if not parent_session_id or codex_home is None:
+        return []
+
+    state_path = codex_home / "state_5.sqlite"
+    if not state_path.is_file():
+        return []
+
+    try:
+        connection = sqlite3.connect(f"{state_path.resolve().as_uri()}?mode=ro", uri=True)
+        connection.row_factory = sqlite3.Row
+        if not _has_linked_child_schema(connection):
+            return []
+        rows = connection.execute(
+            """
+            SELECT
+              e.parent_thread_id,
+              e.child_thread_id,
+              e.status,
+              t.rollout_path,
+              t.updated_at,
+              t.updated_at_ms,
+              t.cwd,
+              t.title,
+              t.first_user_message,
+              t.agent_nickname,
+              t.agent_role
+            FROM thread_spawn_edges e
+            LEFT JOIN threads t ON t.id = e.child_thread_id
+            WHERE e.parent_thread_id = ?
+            ORDER BY COALESCE(t.updated_at_ms, t.updated_at * 1000, 0) DESC,
+                     e.child_thread_id ASC
+            LIMIT ?
+            """,
+            (parent_session_id, LINKED_CHILD_SESSION_LIMIT),
+        ).fetchall()
+    except (OSError, sqlite3.Error):
+        return []
+    finally:
+        try:
+            connection.close()
+        except UnboundLocalError:
+            pass
+
+    return [
+        _linked_child_payload(
+            row,
+            out_dir=out_dir,
+            redacted=redacted,
+            context=context,
+        )
+        for row in rows
+    ]
+
+
+def _has_linked_child_schema(connection: sqlite3.Connection) -> bool:
+    edge_columns = _sqlite_table_columns(connection, "thread_spawn_edges")
+    thread_columns = _sqlite_table_columns(connection, "threads")
+    return {
+        "parent_thread_id",
+        "child_thread_id",
+        "status",
+    }.issubset(edge_columns) and {
+        "id",
+        "rollout_path",
+        "updated_at",
+        "updated_at_ms",
+        "cwd",
+        "title",
+        "first_user_message",
+        "agent_nickname",
+        "agent_role",
+    }.issubset(thread_columns)
+
+
+def _sqlite_table_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    try:
+        rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    except sqlite3.Error:
+        return set()
+    return {str(row[1]) for row in rows}
+
+
+def _linked_child_payload(
+    row: sqlite3.Row,
+    *,
+    out_dir: Path,
+    redacted: bool,
+    context: RedactionContext,
+) -> dict[str, str]:
+    child_session_id = _string(row["child_thread_id"])
+    child_metadata = _load_child_mirror_metadata(out_dir, child_session_id)
+    child_summary = _as_dict(child_metadata.get("summary"))
+    layout = mirror_layout(out_dir)
+    markdown_relpath = _string(child_metadata.get("markdown_relpath"))
+    handoff_relpath = ""
+    if (layout.out_dir / layout.handoff_markdown_relpath(child_session_id)).is_file():
+        handoff_relpath = layout.handoff_markdown_relpath(child_session_id)
+
+    first_user_message = _string(row["first_user_message"]) or _string(
+        child_summary.get("first_user_message")
+    )
+    latest_assistant_message = _string(child_summary.get("last_assistant_message"))
+
+    return {
+        "parent_session_id": _clean_child_text(row["parent_thread_id"], redacted, context, 120),
+        "child_session_id": child_session_id,
+        "status": _clean_child_text(row["status"], redacted, context, 80),
+        "title": _clean_child_text(
+            _string(row["title"]) or _string(child_metadata.get("title")),
+            redacted,
+            context,
+            140,
+        ),
+        "cwd": _clean_child_text(row["cwd"], redacted, context, 220),
+        "rollout_path": _clean_child_text(row["rollout_path"], redacted, context, 260),
+        "first_user_message": _clean_child_text(first_user_message, redacted, context, 260),
+        "latest_assistant_message": _clean_child_text(
+            latest_assistant_message,
+            redacted,
+            context,
+            260,
+        ),
+        "updated_at": _epoch_timestamp_to_iso(row["updated_at_ms"] or row["updated_at"]),
+        "agent_nickname": _clean_child_text(row["agent_nickname"], redacted, context, 80),
+        "agent_role": _clean_child_text(row["agent_role"], redacted, context, 80),
+        "markdown_relpath": markdown_relpath,
+        "handoff_markdown_relpath": handoff_relpath,
+    }
+
+
+def _load_child_mirror_metadata(out_dir: Path, child_session_id: str) -> dict[str, Any]:
+    if not child_session_id:
+        return {}
+    metadata_path = mirror_layout(out_dir).metadata_path(child_session_id)
+    if not metadata_path.is_file():
+        return {}
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _clean_child_text(
+    value: Any,
+    redacted: bool,
+    context: RedactionContext,
+    limit: int,
+) -> str:
+    text = _text_value(value)
+    if redacted:
+        text = redact_text(text, context).text
+    return _excerpt_text(text, limit=limit)
+
+
+def _epoch_timestamp_to_iso(value: Any) -> str:
+    if value in (None, ""):
+        return ""
+    try:
+        timestamp = int(value)
+    except (TypeError, ValueError):
+        return _string(value)
+    if timestamp > 10_000_000_000:
+        timestamp = timestamp // 1000
+    try:
+        return datetime.fromtimestamp(timestamp, tz=UTC).replace(microsecond=0).isoformat().replace(
+            "+00:00",
+            "Z",
+        )
+    except (OSError, OverflowError, ValueError):
+        return ""
+
+
+def _infer_codex_home(metadata: dict[str, Any]) -> Path | None:
+    source_file_value = metadata.get("source_file")
+    source_relpath_value = metadata.get("source_relpath")
+    if not isinstance(source_file_value, str) or not source_file_value.strip():
+        return None
+    if not isinstance(source_relpath_value, str) or not source_relpath_value.strip():
+        return None
+
+    source_file = Path(source_file_value).expanduser().resolve(strict=False)
+    source_dir = _infer_source_dir(source_file, source_relpath_value)
+    if source_dir.name in {"sessions", "archived_sessions"}:
+        return source_dir.parent
+    return source_dir
+
+
+def _child_agent_label(child: dict[str, Any]) -> str:
+    nickname = _string(child.get("agent_nickname"))
+    role = _string(child.get("agent_role"))
+    if nickname and role:
+        return f"{nickname} (`{role}`)"
+    if nickname:
+        return nickname
+    if role:
+        return f"`{role}`"
+    return ""
 
 
 def _latest_failure_signal(
@@ -839,6 +2671,7 @@ def _detect_repo_state(cwd: Path | None) -> dict[str, Any]:
         "repo_branch": "",
         "repo_head_commit": "",
         "repo_clean": None,
+        "repo_dirty_paths": [],
     }
     if cwd is None or not cwd.exists():
         return result
@@ -877,9 +2710,26 @@ def _detect_repo_state(cwd: Path | None) -> dict[str, Any]:
             "repo_branch": branch,
             "repo_head_commit": head_commit,
             "repo_clean": not bool(status),
+            "repo_dirty_paths": _parse_git_status_paths(status),
         }
     )
     return result
+
+
+def _parse_git_status_paths(status: str) -> list[dict[str, str]]:
+    paths: list[dict[str, str]] = []
+    for raw_line in status.splitlines():
+        if not raw_line:
+            continue
+        status_code = raw_line[:2].strip() or "dirty"
+        path_text = raw_line[2:].strip() if len(raw_line) > 2 else ""
+        if " -> " in path_text:
+            path_text = path_text.split(" -> ", 1)[1].strip()
+        normalized = _normalize_artifact_path(path_text)
+        if not normalized:
+            continue
+        paths.append({"path": normalized, "status": status_code})
+    return paths
 
 
 def _as_dict(value: Any) -> dict[str, Any]:

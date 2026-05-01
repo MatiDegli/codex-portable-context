@@ -6,6 +6,8 @@
 
 It is intentionally not a resume engine.
 
+For the roadmap that moves handoffs toward stronger fresh-session re-entry, see [Continuity Bridge Roadmap](./continuity-bridge-roadmap.md).
+
 ## What It Produces
 
 For a selected exported session, the command writes:
@@ -26,11 +28,22 @@ The handoff bundle starts from the derived mirror:
 
 If the original local source session file is still available through `metadata.source_file`, the bundle also extracts:
 
+- a continuation brief for fresh-session re-entry
+- a resolved-state layer that separates latest request from resolution status
+- a contextual request field for short follow-ups such as `Pasamelo`
+- changed/key artifact paths from recent text, tool outputs, and git status
+- durable decisions, invariants, rejected paths, and open architecture questions
+- a re-entry posture contract that defaults the first turn to read-only review
+- a copy-ready restart prompt for a fresh local session
 - a compact current-state layer
+- explicit compaction summaries or prompts when provider events expose them
+- linked child session summaries from local thread state when available
 - recent normalized actions
 - a recent conversation window
 - recent notable events
 - recent tool activity
+
+Child session enrichment reads `state_5.sqlite` through Python's built-in SQLite support. The `sqlite3` command-line tool is not required, and missing local SQLite state degrades to an empty child-session section.
 
 If the local source file is no longer available, the bundle still works, but it falls back to the derived mirror only.
 
@@ -50,14 +63,22 @@ This keeps it auditable and avoids introducing API or model dependencies.
 The Markdown handoff is intentionally layered:
 
 1. `Snapshot`
-2. `Current State`
-3. `Continuity Entry`
-4. `Artifacts`
-5. `Operator Note Template`
-6. `Recent Actions (normalized)`
-7. `Open Loops / Risks`
-8. `Transcript Excerpt`
-9. raw audit-trail sections
+2. `Continuation Brief`
+3. `Resolved State`
+4. `Changed / Key Artifacts`
+5. `Decisions / Invariants`
+6. `Re-Entry Posture`
+7. `Restart Prompt`
+8. `Current State`
+9. `Continuity Entry`
+10. `Artifacts`
+11. `Operator Note Template`
+12. `Compaction Summaries` when available
+13. `Linked Child Sessions` when available
+14. `Recent Actions (normalized)`
+15. `Open Loops / Risks`
+16. `Transcript Excerpt`
+17. raw audit-trail sections
 
 The top of the handoff is optimized for quick re-entry. The lower sections stay extractive and verbose on purpose for traceability.
 
@@ -76,9 +97,11 @@ For the exact minimum cross-device package expected on the destination machine, 
 - it does not guarantee a perfect semantic summary
 - it does not replace reading the full transcript when details matter
 
-`Current State` and `Recent Actions` are still heuristic and extractive. They are meant to improve operator speed, not to replace the full transcript when exact detail matters.
+`Continuation Brief`, `Resolved State`, `Current State`, and `Recent Actions` are still heuristic and extractive. They are meant to improve operator speed, not to replace the full transcript when exact detail matters.
 
 `Open Loops / Risks` follows the same rule: it only surfaces conservative signals such as missing validation, obvious recent failures, open questions that are explicit in the user text, and operational risks like missing local source or a dirty repo.
+
+The current continuity bridge layer provides a compact, traceable re-entry brief with resolved state, durable decisions, changed artifacts, re-entry posture, and a copy-ready restart prompt. Remaining improvements are tracked in [Continuity Bridge Roadmap](./continuity-bridge-roadmap.md).
 
 ## Usage
 
