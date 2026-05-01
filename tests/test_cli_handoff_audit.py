@@ -14,7 +14,9 @@ def test_handoff_audit_cli_reports_memory_coverage(tmp_path: Path, capsys) -> No
     assert exit_code == 0
     assert "Audited 2 session(s): 1 with memory, 1 empty, 0 errored." in captured.out
     assert "Readiness:" in captured.out
+    assert "Purpose:" in captured.out
     assert "READY" in captured.out
+    assert "PURPOSE" in captured.out
     assert "Rich Memory Session" in captured.out
     assert "Sparse Session" in captured.out
     assert "no_memory" in captured.out
@@ -34,14 +36,16 @@ def test_handoff_audit_cli_json_reports_counts_and_sources(
     assert payload["summary"]["audited"] == 1
     assert payload["summary"]["covered"] == 1
     assert payload["summary"]["readiness_counts"]
+    assert payload["summary"]["purpose_counts"]
     assert payload["items"][0]["session_id"] == "session-rich"
     assert payload["items"][0]["readiness"] in {"ready", "review", "weak"}
+    assert payload["items"][0]["session_purpose"] == "substantive_work"
     assert payload["items"][0]["quality_gates"] == payload["items"][0]["flags"]
     assert payload["items"][0]["counts"]["invariants"] >= 1
     assert "context_structural_memory" in payload["items"][0]["sources"]
 
 
-def test_handoff_audit_cli_marks_sparse_prompt_weak(
+def test_handoff_audit_cli_marks_sparse_prompt_minimal_expected(
     tmp_path: Path,
     capsys,
 ) -> None:
@@ -53,9 +57,29 @@ def test_handoff_audit_cli_marks_sparse_prompt_weak(
     assert exit_code == 0
     payload = json.loads(captured.out)
     item = payload["items"][0]
-    assert item["readiness"] == "weak"
+    assert item["session_purpose"] == "empty_or_noise"
+    assert item["readiness"] == "minimal_expected"
     assert "no_memory" in item["flags"]
     assert "low_confidence" in item["flags"]
+
+
+def test_handoff_audit_cli_marks_bootstrap_without_memory_minimal_expected(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(tmp_path, include_bootstrap=True)
+
+    exit_code = main(["--out-dir", str(out_dir), "--json", "session-bootstrap"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    item = payload["items"][0]
+    assert item["session_purpose"] == "bootstrap_or_ack"
+    assert item["readiness"] == "minimal_expected"
+    assert "no_memory" in item["flags"]
+    assert payload["summary"]["readiness_counts"]["minimal_expected"] == 1
+    assert payload["summary"]["purpose_counts"]["bootstrap_or_ack"] == 1
 
 
 def test_handoff_audit_cli_can_read_existing_handoffs_without_generating(
@@ -83,7 +107,7 @@ def test_handoff_audit_cli_rejects_negative_limit(tmp_path: Path, capsys) -> Non
     assert "--limit must be zero or greater." in captured.err
 
 
-def build_fixture_mirror(tmp_path: Path) -> Path:
+def build_fixture_mirror(tmp_path: Path, *, include_bootstrap: bool = False) -> Path:
     codex_home = tmp_path / ".codex"
     source_dir = codex_home / "sessions" / "2026" / "03" / "16"
     source_dir.mkdir(parents=True)
@@ -109,27 +133,46 @@ def build_fixture_mirror(tmp_path: Path) -> Path:
         thread_name="Sparse Session",
         developer_context="Developer context without durable handoff memory markers.",
     )
-
-    (codex_home / "session_index.jsonl").write_text(
-        "\n".join(
-            [
-                json.dumps(
-                    {
-                        "id": "session-rich",
-                        "thread_name": "Rich Memory Session",
-                        "updated_at": "2026-03-16T10:00:00Z",
-                    }
-                ),
-                json.dumps(
-                    {
-                        "id": "session-sparse",
-                        "thread_name": "Sparse Session",
-                        "updated_at": "2026-03-16T10:05:00Z",
-                    }
-                ),
-            ]
+    if include_bootstrap:
+        write_session(
+            source_dir / "rollout-2026-03-16T10-10-00-bootstrap.jsonl",
+            session_id="session-bootstrap",
+            updated_at="2026-03-16T10:10:00Z",
+            thread_name=(
+                "Reviewer bootstrap for Workstation dogfood. Reply exactly: "
+                "WORKSTATION_REVIEWER_BOOTSTRAP_OK"
+            ),
+            developer_context=(
+                "Bootstrap thread only. Reply exactly: "
+                "WORKSTATION_REVIEWER_BOOTSTRAP_OK"
+            ),
         )
-        + "\n",
+
+    index_records = [
+        {
+            "id": "session-rich",
+            "thread_name": "Rich Memory Session",
+            "updated_at": "2026-03-16T10:00:00Z",
+        },
+        {
+            "id": "session-sparse",
+            "thread_name": "Sparse Session",
+            "updated_at": "2026-03-16T10:05:00Z",
+        },
+    ]
+    if include_bootstrap:
+        index_records.append(
+            {
+                "id": "session-bootstrap",
+                "thread_name": (
+                    "Reviewer bootstrap for Workstation dogfood. Reply exactly: "
+                    "WORKSTATION_REVIEWER_BOOTSTRAP_OK"
+                ),
+                "updated_at": "2026-03-16T10:10:00Z",
+            }
+        )
+    (codex_home / "session_index.jsonl").write_text(
+        "\n".join(json.dumps(record) for record in index_records) + "\n",
         encoding="utf-8",
     )
 

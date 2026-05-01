@@ -73,17 +73,29 @@ def render_handoff_audit(report: dict[str, Any]) -> str:
             average=float(summary.get("average_memory_items", 0.0)),
         ),
         (
-            "Readiness: ready={ready}, review={review}, weak={weak}, error={error}."
+            "Readiness: ready={ready}, review={review}, weak={weak}, "
+            "minimal={minimal}, error={error}."
         ).format(
             ready=summary.get("readiness_counts", {}).get("ready", 0),
             review=summary.get("readiness_counts", {}).get("review", 0),
             weak=summary.get("readiness_counts", {}).get("weak", 0),
+            minimal=summary.get("readiness_counts", {}).get("minimal_expected", 0),
             error=summary.get("readiness_counts", {}).get("error", 0),
+        ),
+        (
+            "Purpose: substantive={substantive}, review={review}, bootstrap={bootstrap}, "
+            "transport={transport}, noise={noise}."
+        ).format(
+            substantive=summary.get("purpose_counts", {}).get("substantive_work", 0),
+            review=summary.get("purpose_counts", {}).get("review_or_audit", 0),
+            bootstrap=summary.get("purpose_counts", {}).get("bootstrap_or_ack", 0),
+            transport=summary.get("purpose_counts", {}).get("transport_test", 0),
+            noise=summary.get("purpose_counts", {}).get("empty_or_noise", 0),
         ),
         "",
         (
-            f"{'SESSION':<8}  {'TITLE':<32}  {'READY':<6}  {'CONF':<6}  "
-            f"{'D':>2} {'I':>2} {'R':>2} {'O':>2}  {'ROLE':<18}  "
+            f"{'SESSION':<8}  {'TITLE':<30}  {'READY':<16}  {'PURPOSE':<14}  "
+            f"{'CONF':<6}  {'D':>2} {'I':>2} {'R':>2} {'O':>2}  {'ROLE':<18}  "
             f"{'SOURCES':<28}  FLAGS"
         ),
     ]
@@ -95,8 +107,9 @@ def render_handoff_audit(report: dict[str, Any]) -> str:
         flags = ", ".join(str(flag) for flag in _as_list(item.get("flags"))) or "-"
         lines.append(
             f"{str(item.get('session_id', ''))[:8]:<8}  "
-            f"{truncate(str(item.get('title') or ''), 32):<32}  "
-            f"{str(item.get('readiness') or 'error'):<6}  "
+            f"{truncate(str(item.get('title') or ''), 30):<30}  "
+            f"{str(item.get('readiness') or 'error'):<16}  "
+            f"{truncate(str(item.get('session_purpose') or 'unknown'), 14):<14}  "
             f"{str(item.get('confidence') or 'error'):<6}  "
             f"{int(counts.get('decisions', 0)):>2} "
             f"{int(counts.get('invariants', 0)):>2} "
@@ -172,17 +185,19 @@ def _audit_entry(entry: MirrorEntry, *, out_dir: Path, generate: bool) -> dict[s
     confidence = str(memory.get("confidence") or "unknown")
     sources = _memory_sources(memory)
     role_hint = str(_as_dict(payload.get("reentry_posture")).get("role_hint") or "unknown")
+    purpose = _session_purpose(payload=payload, title=entry_title(entry), total=total)
     flags = _quality_flags(
         payload=payload,
         total=total,
         confidence=confidence,
         role_hint=role_hint,
     )
-    readiness = _readiness(flags=flags, error="")
+    readiness = _readiness(flags=flags, error="", purpose=purpose)
 
     return {
         "session_id": session_id,
         "title": entry_title(entry),
+        "session_purpose": purpose,
         "handoff_json_path": str(json_path),
         "handoff_markdown_path": str(layout.handoff_markdown_path(session_id)),
         "confidence": confidence,
@@ -207,6 +222,7 @@ def _error_item(
         "session_id": entry_session_id(entry),
         "title": entry_title(entry),
         "confidence": "error",
+        "session_purpose": "unknown",
         "counts": {key: 0 for key in MEMORY_KEYS},
         "total_memory_items": 0,
         "covered": False,
@@ -221,7 +237,21 @@ def _error_item(
 
 def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
     confidence_counts = {"high": 0, "medium": 0, "low": 0, "unknown": 0, "error": 0}
-    readiness_counts = {"ready": 0, "review": 0, "weak": 0, "error": 0}
+    readiness_counts = {
+        "ready": 0,
+        "review": 0,
+        "weak": 0,
+        "minimal_expected": 0,
+        "error": 0,
+    }
+    purpose_counts = {
+        "substantive_work": 0,
+        "review_or_audit": 0,
+        "bootstrap_or_ack": 0,
+        "transport_test": 0,
+        "empty_or_noise": 0,
+        "unknown": 0,
+    }
     total_memory = 0
     covered = 0
     errored = 0
@@ -231,6 +261,8 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         confidence_counts[confidence if confidence in confidence_counts else "unknown"] += 1
         readiness = str(item.get("readiness") or "error")
         readiness_counts[readiness if readiness in readiness_counts else "error"] += 1
+        purpose = str(item.get("session_purpose") or "unknown")
+        purpose_counts[purpose if purpose in purpose_counts else "unknown"] += 1
         total = int(item.get("total_memory_items") or 0)
         total_memory += total
         if total > 0:
@@ -248,6 +280,7 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         "average_memory_items": total_memory / audited if audited else 0.0,
         "confidence_counts": confidence_counts,
         "readiness_counts": readiness_counts,
+        "purpose_counts": purpose_counts,
     }
 
 
@@ -301,9 +334,11 @@ def _quality_flags(
     return flags
 
 
-def _readiness(*, flags: list[str], error: str) -> str:
+def _readiness(*, flags: list[str], error: str, purpose: str) -> str:
     if error:
         return "error"
+    if _is_minimal_expected(purpose=purpose, flags=flags):
+        return "minimal_expected"
     weak_flags = {
         "missing_restart_prompt",
         "missing_role_hint",
@@ -323,6 +358,109 @@ def _readiness(*, flags: list[str], error: str) -> str:
     if any(flag in review_flags for flag in flags):
         return "review"
     return "ready"
+
+
+def _session_purpose(*, payload: dict[str, Any], title: str, total: int) -> str:
+    haystack = _purpose_haystack(payload=payload, title=title)
+    if _looks_like_bootstrap_or_ack(haystack):
+        return "bootstrap_or_ack"
+    if _looks_like_transport_test(haystack):
+        return "transport_test"
+    if _looks_like_review_or_audit(haystack):
+        return "review_or_audit"
+    if total == 0 and _looks_like_empty_or_noise(haystack):
+        return "empty_or_noise"
+    return "substantive_work"
+
+
+def _purpose_haystack(*, payload: dict[str, Any], title: str) -> str:
+    session = _as_dict(payload.get("session"))
+    resolved_state = _as_dict(payload.get("resolved_state"))
+    continuation_brief = _as_dict(payload.get("continuation_brief"))
+    parts = [
+        title,
+        str(session.get("first_user_message") or ""),
+        str(session.get("last_substantive_user_request") or ""),
+        str(resolved_state.get("latest_user_request") or ""),
+        str(resolved_state.get("contextual_user_request") or ""),
+        str(resolved_state.get("resolution_summary") or ""),
+        str(continuation_brief.get("what_we_were_doing") or ""),
+        str(continuation_brief.get("last_meaningful_outcome") or ""),
+    ]
+    return " ".join(parts).lower()
+
+
+def _looks_like_bootstrap_or_ack(text: str) -> bool:
+    markers = (
+        "bootstrap",
+        "acknowledge readiness",
+        "ack readiness",
+        "reply exactly",
+        "respond exactly",
+        "readiness for dispatch",
+        "bootstrap_ok",
+        "_bootstrap_ok",
+    )
+    return any(marker in text for marker in markers)
+
+
+def _looks_like_transport_test(text: str) -> bool:
+    markers = (
+        "transport test",
+        "dogfood",
+        "bounded agent-bridge",
+        "agent-bridge turn",
+        "app server thread",
+        "sync-bound-thread",
+        "handshake",
+        "ping",
+        "smoke test",
+        "smoke",
+    )
+    return any(marker in text for marker in markers)
+
+
+def _looks_like_review_or_audit(text: str) -> bool:
+    markers = (
+        "review",
+        "reviewer",
+        "audit",
+        "findings",
+        "residual risk",
+        "residual risks",
+        "architect",
+    )
+    return any(marker in text for marker in markers)
+
+
+def _looks_like_empty_or_noise(text: str) -> bool:
+    normalized = " ".join(text.split())
+    if not normalized:
+        return True
+    explicit_markers = (
+        "sparse session",
+        "empty session",
+        "test fixture",
+    )
+    if any(marker in normalized for marker in explicit_markers):
+        return True
+    short_noise_markers = ("noop", "scratch", "empty")
+    return len(normalized) < 120 and any(
+        marker in normalized for marker in short_noise_markers
+    )
+
+
+def _is_minimal_expected(*, purpose: str, flags: list[str]) -> bool:
+    if purpose not in {"bootstrap_or_ack", "transport_test", "empty_or_noise"}:
+        return False
+    tolerated_flags = {
+        "no_memory",
+        "low_confidence",
+        "generic_next_action",
+        "missing_validation_summary",
+        "bare_recommended_artifacts",
+    }
+    return all(flag in tolerated_flags for flag in flags)
 
 
 def _restart_prompt_text(payload: dict[str, Any]) -> str:

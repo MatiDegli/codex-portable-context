@@ -375,6 +375,35 @@ Acceptance checks:
 - Recommended inspection order prefers `src/...`, `tests/...`, or docs paths over basenames.
 - Ambiguous filenames remain conservative instead of pointing at the wrong file.
 
+## Phase 5f: Session Purpose and Audit Calibration
+
+Separate poor continuity from sessions that are intentionally minimal.
+
+Classify handoff audit items by purpose:
+
+- `substantive_work`
+- `review_or_audit`
+- `bootstrap_or_ack`
+- `transport_test`
+- `empty_or_noise`
+
+Add readiness:
+
+- `minimal_expected`: session is sparse by design, so missing memory is not a bridge failure
+
+Implementation guidance:
+
+- Keep substantive work and reviewer/audit sessions accountable for memory.
+- Treat bootstrap, ACK, handshake, and transport-test sessions as minimal when their only flags are expected sparsity.
+- Do not hide real artifact or prompt corruption behind `minimal_expected`.
+- Show purpose counts in the audit summary so the dashboard explains why weak counts moved.
+
+Acceptance checks:
+
+- Bootstrap and ACK sessions without durable memory are marked `minimal_expected`.
+- Substantive sessions without memory remain `weak`.
+- Audit output explains purpose distribution alongside readiness distribution.
+
 ## Phase 6: Provider-Agnostic Continuity Quality
 
 Keep the new bridge fields provider-neutral.

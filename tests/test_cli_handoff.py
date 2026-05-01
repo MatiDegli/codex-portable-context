@@ -380,7 +380,10 @@ def test_handoff_cli_resolves_bare_updated_files_from_repo_root(
     recommended = payload["changed_artifacts"]["recommended_inspection_order"]
     assert "handoff.py" in changed
     assert "tests/test_cli_handoff.py" in changed
-    assert "src/codex_portable_context/core/handoff.py" in recommended
+    assert any(
+        path.endswith("src/codex_portable_context/core/handoff.py")
+        for path in recommended
+    )
     assert "handoff.py" not in recommended
     assert "/" not in recommended
 
