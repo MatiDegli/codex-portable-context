@@ -82,6 +82,25 @@ def test_handoff_audit_cli_marks_bootstrap_without_memory_minimal_expected(
     assert payload["summary"]["purpose_counts"]["bootstrap_or_ack"] == 1
 
 
+def test_handoff_audit_cli_marks_active_unanswered_session_for_review(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(tmp_path, include_active=True)
+
+    exit_code = main(["--out-dir", str(out_dir), "--json", "session-active"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    item = payload["items"][0]
+    assert item["session_purpose"] == "active_in_progress"
+    assert item["readiness"] == "review"
+    assert "no_memory" in item["flags"]
+    assert payload["summary"]["readiness_counts"]["review"] == 1
+    assert payload["summary"]["purpose_counts"]["active_in_progress"] == 1
+
+
 def test_handoff_audit_cli_can_read_existing_handoffs_without_generating(
     tmp_path: Path,
     capsys,
@@ -107,7 +126,12 @@ def test_handoff_audit_cli_rejects_negative_limit(tmp_path: Path, capsys) -> Non
     assert "--limit must be zero or greater." in captured.err
 
 
-def build_fixture_mirror(tmp_path: Path, *, include_bootstrap: bool = False) -> Path:
+def build_fixture_mirror(
+    tmp_path: Path,
+    *,
+    include_bootstrap: bool = False,
+    include_active: bool = False,
+) -> Path:
     codex_home = tmp_path / ".codex"
     source_dir = codex_home / "sessions" / "2026" / "03" / "16"
     source_dir.mkdir(parents=True)
@@ -147,6 +171,15 @@ def build_fixture_mirror(tmp_path: Path, *, include_bootstrap: bool = False) -> 
                 "WORKSTATION_REVIEWER_BOOTSTRAP_OK"
             ),
         )
+    if include_active:
+        write_session(
+            source_dir / "rollout-2026-03-16T10-15-00-active.jsonl",
+            session_id="session-active",
+            updated_at="2026-03-16T10:15:00Z",
+            thread_name="Active Session",
+            developer_context="Developer context without durable handoff memory markers.",
+            final_answer=False,
+        )
 
     index_records = [
         {
@@ -169,6 +202,14 @@ def build_fixture_mirror(tmp_path: Path, *, include_bootstrap: bool = False) -> 
                     "WORKSTATION_REVIEWER_BOOTSTRAP_OK"
                 ),
                 "updated_at": "2026-03-16T10:10:00Z",
+            }
+        )
+    if include_active:
+        index_records.append(
+            {
+                "id": "session-active",
+                "thread_name": "Active Session",
+                "updated_at": "2026-03-16T10:15:00Z",
             }
         )
     (codex_home / "session_index.jsonl").write_text(
@@ -194,6 +235,7 @@ def write_session(
     updated_at: str,
     thread_name: str,
     developer_context: str,
+    final_answer: bool = True,
 ) -> None:
     records = [
         {
@@ -226,16 +268,19 @@ def write_session(
                 "message": f"Please inspect {thread_name}.",
             },
         },
-        {
-            "timestamp": updated_at,
-            "type": "event_msg",
-            "payload": {
-                "type": "agent_message",
-                "message": f"I inspected {thread_name}.",
-                "phase": "final_answer",
-            },
-        },
     ]
+    if final_answer:
+        records.append(
+            {
+                "timestamp": updated_at,
+                "type": "event_msg",
+                "payload": {
+                    "type": "agent_message",
+                    "message": f"I inspected {thread_name}.",
+                    "phase": "final_answer",
+                },
+            }
+        )
     path.write_text(
         "\n".join(json.dumps(record) for record in records) + "\n",
         encoding="utf-8",

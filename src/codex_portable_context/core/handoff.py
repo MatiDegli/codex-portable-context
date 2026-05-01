@@ -2454,14 +2454,22 @@ def _next_best_action_for_brief(
     if minimal_action:
         return minimal_action
 
-    memory_action = _specific_next_action_from_memory(decisions_and_invariants or {})
-    artifact_action = _specific_next_action_from_artifacts(changed_artifacts or {})
     resolution_status = resolved_state.get("request_resolution_status")
-    if resolution_status in {"answered", "handled_with_changes", "completed"}:
+    resolved_follow_up = resolution_status in {"answered", "handled_with_changes", "completed"}
+    memory_action = _specific_next_action_from_memory(decisions_and_invariants or {})
+    artifact_action = _specific_next_action_from_artifacts(
+        changed_artifacts or {},
+        resolved_follow_up=resolved_follow_up,
+    )
+    if resolved_follow_up:
         if memory_action:
             return memory_action
         if artifact_action:
             return artifact_action
+    elif memory_action:
+        return memory_action
+    elif artifact_action:
+        return artifact_action
     if resolution_status == "answered":
         return (
             "Continue from the resolution summary and decide the next concrete "
@@ -2593,16 +2601,27 @@ def _prioritized_open_memory_items(items: list[Any]) -> list[Any]:
     return [*priority, *remaining]
 
 
-def _specific_next_action_from_artifacts(changed_artifacts: dict[str, Any]) -> str:
+def _specific_next_action_from_artifacts(
+    changed_artifacts: dict[str, Any],
+    *,
+    resolved_follow_up: bool,
+) -> str:
     paths = _next_action_artifact_paths(changed_artifacts)
     if not paths:
         return ""
     rendered_paths = _action_path_list(paths[:3])
     if not rendered_paths:
         return ""
+    suffix = (
+        "continue the scoped follow-up from the resolved state."
+        if resolved_follow_up
+        else (
+            "recover the current unresolved state before choosing review, "
+            "plan, or implement."
+        )
+    )
     return _excerpt_text(
-        f"Inspect {rendered_paths} first, then continue the scoped follow-up from "
-        "the resolved state.",
+        f"Inspect {rendered_paths} first, then {suffix}",
         limit=320,
     )
 

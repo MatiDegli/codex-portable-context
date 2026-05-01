@@ -36,6 +36,13 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
             "Current State and Open Loops."
         )
     )
+    assert (
+        payload["continuation_brief"]["next_best_action"]
+        == (
+            "Inspect `README.md` first, then recover the current unresolved "
+            "state before choosing review, plan, or implement."
+        )
+    )
     assert payload["continuation_brief"]["what_we_were_doing"] == "Why is the IDE output empty?"
     assert payload["continuation_brief"]["latest_resolved_request"] == ""
     assert (

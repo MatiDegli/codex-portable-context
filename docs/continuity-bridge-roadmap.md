@@ -36,8 +36,8 @@ Status as of the Phase 5h consolidation pass:
 - `codex-session-handoff --restart-prompt` emits a copy-ready fresh-session prompt.
 - The static reader exposes a copy button for the generated restart prompt.
 - `codex-session-handoff-audit` reports readiness, purpose, quality gates, memory counts, role hints, and evidence sources.
-- Recent real-sample audit over 20 sessions: `7 ready`, `1 review`, `0 weak`, `12 minimal_expected`, `0 error`.
-- The remaining `review` sample is usable but still carries `generic_next_action`.
+- Recent real-sample audit over 20 sessions: `6 ready`, `2 review`, `0 weak`, `12 minimal_expected`, `0 error`.
+- The remaining `review` samples are active in-progress sessions; they have no weak prompt gates and are intentionally review-gated until their turns are resolved.
 - Bootstrap/ACK sessions are now classified as `minimal_expected` instead of polluting weak continuity counts.
 
 E2E restart prompt trial:
@@ -46,6 +46,7 @@ E2E restart prompt trial:
 - The implementation follow-up and bootstrap reviewer prompts produced correct first responses: no tools, recovered context, inferred posture, candidate next steps, and mode confirmation.
 - The architecture/boundary prompt initially stayed safe but collapsed to only a mode question.
 - The restart prompt now includes a required first-response format to make context recovery explicit; the architecture/boundary retest produced the expected structured response.
+- Active in-progress prompts now use a context-recovery next action rather than a generic continuation action; an E2E trial confirmed the prompt did not use tools or start implementation.
 - The local `agent-bridge-public` MCP surface supports bounded send/receive in this environment, but cannot create new threads, so fresh-agent E2E trials currently use local subagents.
 
 Validation commands for this snapshot:

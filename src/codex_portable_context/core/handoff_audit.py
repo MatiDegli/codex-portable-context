@@ -83,11 +83,12 @@ def render_handoff_audit(report: dict[str, Any]) -> str:
             error=summary.get("readiness_counts", {}).get("error", 0),
         ),
         (
-            "Purpose: substantive={substantive}, review={review}, bootstrap={bootstrap}, "
-            "transport={transport}, noise={noise}."
+            "Purpose: substantive={substantive}, review={review}, active={active}, "
+            "bootstrap={bootstrap}, transport={transport}, noise={noise}."
         ).format(
             substantive=summary.get("purpose_counts", {}).get("substantive_work", 0),
             review=summary.get("purpose_counts", {}).get("review_or_audit", 0),
+            active=summary.get("purpose_counts", {}).get("active_in_progress", 0),
             bootstrap=summary.get("purpose_counts", {}).get("bootstrap_or_ack", 0),
             transport=summary.get("purpose_counts", {}).get("transport_test", 0),
             noise=summary.get("purpose_counts", {}).get("empty_or_noise", 0),
@@ -247,6 +248,7 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
     purpose_counts = {
         "substantive_work": 0,
         "review_or_audit": 0,
+        "active_in_progress": 0,
         "bootstrap_or_ack": 0,
         "transport_test": 0,
         "empty_or_noise": 0,
@@ -344,6 +346,13 @@ def _readiness(*, flags: list[str], error: str, purpose: str) -> str:
         "missing_role_hint",
         "no_memory",
     }
+    if purpose == "active_in_progress":
+        active_hard_flags = {
+            "missing_restart_prompt",
+            "missing_role_hint",
+        }
+        if not any(flag in active_hard_flags for flag in flags):
+            return "review"
     review_flags = {
         "low_confidence",
         "unknown_confidence",
@@ -370,6 +379,8 @@ def _session_purpose(*, payload: dict[str, Any], title: str, total: int) -> str:
         return "review_or_audit"
     if total == 0 and _looks_like_empty_or_noise(haystack):
         return "empty_or_noise"
+    if total == 0 and _is_active_in_progress(payload):
+        return "active_in_progress"
     return "substantive_work"
 
 
@@ -388,6 +399,15 @@ def _purpose_haystack(*, payload: dict[str, Any], title: str) -> str:
         str(continuation_brief.get("last_meaningful_outcome") or ""),
     ]
     return " ".join(parts).lower()
+
+
+def _is_active_in_progress(payload: dict[str, Any]) -> bool:
+    current_state = _as_dict(payload.get("current_state"))
+    resolved_state = _as_dict(payload.get("resolved_state"))
+    return (
+        str(current_state.get("status") or "") == "in_progress"
+        and str(resolved_state.get("request_resolution_status") or "") == "unanswered"
+    )
 
 
 def _looks_like_bootstrap_or_ack(text: str) -> bool:
