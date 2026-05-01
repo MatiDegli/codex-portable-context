@@ -28,6 +28,33 @@ It is weaker as a cognitive re-entry bridge for long conversations.
 
 In long architecture or coordination sessions, the most important state is often not in the final tool call. It is in the accumulated decisions, repo boundaries, invariants, rejected paths, and user preferences that shaped the work. A fresh session should not need to read a huge transcript just to recover that mental model.
 
+## Current Implementation Snapshot
+
+Status as of the Phase 5h consolidation pass:
+
+- Phases 1 through 5h are implemented in the Python handoff generator, Markdown renderer, reader integration, and audit CLI.
+- `codex-session-handoff --restart-prompt` emits a copy-ready fresh-session prompt.
+- The static reader exposes a copy button for the generated restart prompt.
+- `codex-session-handoff-audit` reports readiness, purpose, quality gates, memory counts, role hints, and evidence sources.
+- Recent real-sample audit over 20 sessions: `7 ready`, `1 review`, `0 weak`, `12 minimal_expected`, `0 error`.
+- The remaining `review` sample is usable but still carries `generic_next_action`.
+- Bootstrap/ACK sessions are now classified as `minimal_expected` instead of polluting weak continuity counts.
+
+E2E restart prompt trial:
+
+- Three fresh agents were initialized from real restart prompts: architecture/boundary, implementation follow-up, and bootstrap reviewer.
+- The implementation follow-up and bootstrap reviewer prompts produced correct first responses: no tools, recovered context, inferred posture, candidate next steps, and mode confirmation.
+- The architecture/boundary prompt initially stayed safe but collapsed to only a mode question.
+- The restart prompt now includes a required first-response format to make context recovery explicit; the architecture/boundary retest produced the expected structured response.
+- The local `agent-bridge-public` MCP surface supports bounded send/receive in this environment, but cannot create new threads, so fresh-agent E2E trials currently use local subagents.
+
+Validation commands for this snapshot:
+
+```bash
+./scripts/validate-python-v2
+.venv/bin/codex-session-handoff-audit --out-dir ./out --limit 20
+```
+
 ## Local Memory Investigation
 
 The first implementation pass checked local Codex state for compaction and memory signals.
@@ -266,6 +293,8 @@ Acceptance checks:
 
 ## Phase 5b: Restart Prompt Quality Gates
 
+Implementation status: implemented.
+
 Move from "prompt exists" to "prompt is good enough to paste without reading the full transcript first".
 
 Add handoff-audit quality gates:
@@ -303,6 +332,8 @@ Acceptance checks:
 
 ## Phase 5c: Review and Findings Memory Extraction
 
+Implementation status: implemented.
+
 Improve continuity for reviewer/audit sessions where durable memory is expressed as findings rather than decisions.
 
 Extract conservative memory from headings such as:
@@ -333,6 +364,8 @@ Acceptance checks:
 
 ## Phase 5d: Specific Next Action Synthesis
 
+Implementation status: implemented.
+
 Move `next_best_action` from a generic continuation instruction to a concrete re-entry action.
 
 Inputs, in priority order:
@@ -358,6 +391,8 @@ Acceptance checks:
 
 ## Phase 5e: Artifact Path Resolution and Cleanup
 
+Implementation status: implemented.
+
 Reduce low-value artifact recommendations caused by bare filenames or malformed Markdown path fragments.
 
 Implementation guidance:
@@ -376,6 +411,8 @@ Acceptance checks:
 - Ambiguous filenames remain conservative instead of pointing at the wrong file.
 
 ## Phase 5f: Session Purpose and Audit Calibration
+
+Implementation status: implemented.
 
 Separate poor continuity from sessions that are intentionally minimal.
 
@@ -406,6 +443,8 @@ Acceptance checks:
 
 ## Phase 5g: Restart Prompt Hygiene
 
+Implementation status: implemented.
+
 Remove noisy or misleading prompt content before testing re-entry behavior.
 
 Implementation guidance:
@@ -423,6 +462,8 @@ Acceptance checks:
 - Restart prompts remain untruncated after hygiene changes.
 
 ## Phase 5h: Implementation Outcome Memory Extraction
+
+Implementation status: implemented.
 
 Preserve what changed conceptually after implementation turns, not only which files changed.
 
@@ -453,6 +494,8 @@ Acceptance checks:
 - Restart prompts preserve behavior-level outcomes without duplicating validation commands.
 
 ## Phase 6: Provider-Agnostic Continuity Quality
+
+Implementation status: pending.
 
 Keep the new bridge fields provider-neutral.
 

@@ -2145,6 +2145,16 @@ def _build_restart_prompt(
         "First response contract:",
         *contract_lines,
         "",
+        "Required first response format:",
+        "1. Recovered context: summarize the session, repo, state, resolved outcome, "
+        "and next best action using only this prompt.",
+        "2. Prior posture: state the role hint, initial mode, and confirmation requirement.",
+        "3. Candidate next steps if confirmed: list what you would do in `review`, "
+        "`plan`, and `implement` mode.",
+        "4. Confirmation question: ask exactly one concise question asking the user "
+        "to choose `review`, `plan`, or `implement`.",
+        "Do not skip any section, even when the handoff looks complete or minimal.",
+        "",
         "Continuation brief:",
         f"- What we were doing: {continuation_brief.get('what_we_were_doing') or 'n/a'}",
         f"- Latest resolved request: {continuation_brief.get('latest_resolved_request') or 'n/a'}",
@@ -2190,8 +2200,9 @@ def _build_restart_prompt(
         f"- Reader: {artifacts.get('reader_relpath') or 'n/a'}",
         "",
         (
-            "First action: answer with the First response contract only, then wait "
-            "for user confirmation before using tools or changing files."
+            "First action: answer with the First response contract and Required "
+            "first response format only, then wait for user confirmation before "
+            "using tools or changing files."
         ),
     ]
     text = "\n".join(text_lines)
@@ -2266,6 +2277,8 @@ def _build_reentry_posture(
             "State the inferred prior-session role/posture.",
             "List the next steps you would take if confirmed.",
             "Ask the user to choose one mode before acting: review, plan, or implement.",
+            "Use the required first response format in the restart prompt; do not collapse "
+            "the response to only a mode question.",
         ],
     }
 

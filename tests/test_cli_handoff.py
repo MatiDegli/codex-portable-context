@@ -61,6 +61,8 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     )
     assert "Do not run commands" in payload["restart_prompt"]["text"]
     assert "Ask the user to choose one mode" in payload["restart_prompt"]["text"]
+    assert "Required first response format:" in payload["restart_prompt"]["text"]
+    assert "Do not skip any section" in payload["restart_prompt"]["text"]
     assert "Session ID: session-5678" in payload["restart_prompt"]["text"]
     assert "Linked child sessions:" in payload["restart_prompt"]["text"]
     assert "Child Fixture Session" in payload["restart_prompt"]["text"]
@@ -219,6 +221,7 @@ def test_handoff_cli_prints_restart_prompt_only(
     assert "Continue from a local extractive handoff." in captured.out
     assert "Session ID: session-5678" in captured.out
     assert "First response contract:" in captured.out
+    assert "Required first response format:" in captured.out
     assert str(out_dir / "handoffs" / "session-5678.md") not in captured.out
 
 
