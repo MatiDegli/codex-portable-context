@@ -117,6 +117,12 @@ Generate a handoff for a specific session prefix and print the Markdown path:
 codex-session-handoff --out-dir ./out 019cef3a --print
 ```
 
+Print only the generated fresh-session restart prompt:
+
+```bash
+codex-session-handoff --out-dir ./out 019cef3a --restart-prompt
+```
+
 Audit recent handoff memory quality:
 
 ```bash

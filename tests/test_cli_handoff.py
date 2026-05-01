@@ -202,6 +202,37 @@ def test_handoff_cli_prints_markdown_path_and_handles_missing_source(
     )
 
 
+def test_handoff_cli_prints_restart_prompt_only(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+
+    exit_code = main(["--out-dir", str(out_dir), "session-5678", "--restart-prompt"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Continue from a local extractive handoff." in captured.out
+    assert "Session ID: session-5678" in captured.out
+    assert "First response contract:" in captured.out
+    assert str(out_dir / "handoffs" / "session-5678.md") not in captured.out
+
+
+def test_handoff_cli_rejects_print_and_restart_prompt_together(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+
+    exit_code = main(
+        ["--out-dir", str(out_dir), "session-5678", "--print", "--restart-prompt"]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "Use only one of --print or --restart-prompt." in captured.err
+
+
 def test_handoff_cli_cleans_ide_wrapper_request_when_source_missing(
     tmp_path: Path,
     capsys,

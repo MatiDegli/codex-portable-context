@@ -207,7 +207,7 @@ These commands operate only on the derived mirror, never on raw `~/.codex`.
 - `codex-session-latest`
   Useful flags: `--metadata`, `--reader`, `--handoff`, `--print`, `--out-dir`
 - `codex-session-handoff`
-  Useful flags: `--latest`, `--print`, `--out-dir`
+  Useful flags: `--latest`, `--print`, `--restart-prompt`, `--out-dir`
 - `codex-session-handoff-audit`
   Useful flags: `--limit`, `--json`, `--no-generate`, `--out-dir`
 
@@ -229,6 +229,7 @@ codex-session-latest --handoff --print
 codex-session-latest --metadata --print
 codex-session-handoff --latest
 codex-session-handoff 019cef3a --print
+codex-session-handoff 019cef3a --restart-prompt
 codex-session-handoff-audit --limit 20
 codex-session-handoff-audit 019cef3a --json
 ```
@@ -464,6 +465,8 @@ The handoff now also adds a compact top layer for faster re-entry:
 - raw audit-trail sections kept lower in the document
 
 The handoff now includes the first continuity bridge layer: a fresh-session re-entry brief with resolved state, durable decisions, changed artifacts, re-entry posture, and a copy-ready restart prompt. See [docs/continuity-bridge-roadmap.md](docs/continuity-bridge-roadmap.md) for the remaining roadmap.
+
+Use `codex-session-handoff 019cef3a --restart-prompt` to print only the generated fresh-session prompt.
 
 Use `codex-session-handoff-audit --limit 20` to sample recent handoffs and check whether `Decisions / Invariants` is producing useful memory or falling back to `no_memory` / `low_confidence`.
 

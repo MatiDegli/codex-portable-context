@@ -242,14 +242,13 @@ Acceptance checks:
 
 Expose the continuity bridge without turning the static reader into a backend app.
 
-Initial implementation status: `codex-session-handoff-audit` now samples selected handoffs, regenerates them by default, and reports `Decisions / Invariants` coverage, confidence, sources, role hints, and quality flags such as `no_memory` and `low_confidence`. This gives the bridge a repeatable quality check before deeper reader ergonomics.
+Initial implementation status: `codex-session-handoff --restart-prompt` prints only the generated fresh-session prompt, and `codex-session-handoff-audit` samples selected handoffs, regenerates them by default, and reports `Decisions / Invariants` coverage, confidence, sources, role hints, and quality flags such as `no_memory` and `low_confidence`. This gives the bridge a fast paste path and a repeatable quality check before deeper reader ergonomics.
 
 Possible improvements:
 
 - show whether a handoff exists before linking to it when the mirror can know that
 - add a "copy restart prompt" block to the static reader
 - add CLI flags:
-  - `codex-session-handoff --restart-prompt`
   - `codex-session-open --handoff --print`
   - `codex-session-latest --handoff --print`
 - consider a generated `handoffs/<session-id>.prompt.md`
