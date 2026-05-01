@@ -38,7 +38,7 @@ Status as of the Phase 5h consolidation pass:
 - `codex-session-handoff-audit` reports readiness, purpose, quality gates, prompt compliance, memory counts, role hints, and evidence sources.
 - Recent real-sample audit over 20 sessions: `7 ready`, `1 review`, `0 weak`, `12 minimal_expected`, `0 error`.
 - Prompt compliance over the same sample: `20 pass`, `0 review`, `0 fail`, `0 error`.
-- The remaining `review` sample is active in progress; active sessions are intentionally review-gated until their turns are resolved.
+- Active sessions are intentionally review-gated until their turns are resolved.
 - Bootstrap/ACK sessions are now classified as `minimal_expected` instead of polluting weak continuity counts.
 
 E2E restart prompt trial:
@@ -49,6 +49,7 @@ E2E restart prompt trial:
 - The restart prompt now includes a required first-response format to make context recovery explicit; the architecture/boundary retest produced the expected structured response.
 - Active in-progress prompts now use a context-recovery next action rather than a generic continuation action; an E2E trial confirmed the prompt did not use tools or start implementation.
 - Static prompt compliance checks now verify the first-response contract, required response format, confirmation gate, first-turn tool ban, and safe first action without initializing agents.
+- Manual E2E manifests can now be generated with `codex-session-handoff-audit --write-e2e-manifest <path>`; this writes prompts and evaluation rubrics but does not launch agents.
 - The local `agent-bridge-public` MCP surface supports bounded send/receive in this environment, but cannot create new threads, so fresh-agent E2E trials currently use local subagents.
 
 Validation commands for this snapshot:
@@ -56,6 +57,7 @@ Validation commands for this snapshot:
 ```bash
 ./scripts/validate-python-v2
 .venv/bin/codex-session-handoff-audit --out-dir ./out --limit 20
+.venv/bin/codex-session-handoff-audit --out-dir ./out --limit 3 --write-e2e-manifest ./out/restart-prompt-e2e.json
 ```
 
 ## Local Memory Investigation
@@ -429,6 +431,7 @@ Classify handoff audit items by purpose:
 
 - `substantive_work`
 - `review_or_audit`
+- `active_in_progress`
 - `bootstrap_or_ack`
 - `transport_test`
 - `empty_or_noise`
@@ -501,6 +504,26 @@ Acceptance checks:
 - Substantive implementation sessions with behavior summaries are not marked `weak`.
 - `decisions_and_invariants.evidence` includes `implementation_outcome` when extracted.
 - Restart prompts preserve behavior-level outcomes without duplicating validation commands.
+
+## Phase 5i: Manual E2E Restart Prompt Manifest
+
+Implementation status: implemented.
+
+Make E2E restart-prompt trials repeatable without making normal audit runs launch agents.
+
+Implementation guidance:
+
+- `codex-session-handoff-audit --write-e2e-manifest <path>` writes a manual-only JSON manifest for the selected sessions.
+- The manifest includes each restart prompt, the handoff identity, readiness, prompt compliance status, expected first-response behavior, pass criteria, and an observation template.
+- The command must not create threads, send messages, run commands in target repos, or edit files.
+- Manual runners paste each `restart_prompt` into a fresh agent/thread and stop after the first response.
+- Prompt compliance remains the fast static gate; E2E manifests are the explicit manual layer above it.
+
+Acceptance checks:
+
+- A manifest can be generated from selected handoff audit items without launching agents.
+- The manifest declares `manual_only` mode and records that it does not launch agents or send messages.
+- Generated cases include the full restart prompt and a rubric for no-tools/no-implementation first responses.
 
 ## Phase 6: Provider-Agnostic Continuity Quality
 

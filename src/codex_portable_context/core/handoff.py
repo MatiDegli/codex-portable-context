@@ -1376,9 +1376,17 @@ def _has_implementation_outcome_signal(text: str) -> bool:
         return False
     markers = (
         "implemented",
+        "implementado",
+        "implementada",
         "committed",
         "behavior now",
         "what changed",
+        "que suma",
+        "qué suma",
+        "que quedo",
+        "qué quedó",
+        "que cambio",
+        "qué cambió",
         "changed:",
         "known caveat",
         "caveat:",
@@ -1406,6 +1414,12 @@ def _implementation_outcome_heading(line: str) -> str:
     accepted = {
         "behavior now": "Behavior now",
         "what changed": "What changed",
+        "que suma": "What changed",
+        "qué suma": "What changed",
+        "que cambio": "What changed",
+        "qué cambió": "What changed",
+        "que quedo": "Behavior now",
+        "qué quedó": "Behavior now",
         "contract": "Contract",
         "known caveat": "Known caveat",
         "caveat": "Known caveat",
@@ -1417,7 +1431,15 @@ def _implementation_outcome_heading(line: str) -> str:
     }
     if lowered in accepted:
         return accepted[lowered]
-    if lowered in {"changed", "changes", "validation", "validated", "tests"}:
+    if lowered in {
+        "changed",
+        "changes",
+        "validation",
+        "validated",
+        "validacion",
+        "validación",
+        "tests",
+    }:
         return "__skip__"
     if looks_like_heading:
         return "__skip__"
@@ -1433,9 +1455,17 @@ def _implementation_outcome_first_line_candidate(line: str) -> str:
         (
             "implemented ",
             "implemented and ",
+            "implemente ",
+            "implementé ",
             "added ",
+            "agregue ",
+            "agregué ",
             "updated ",
+            "actualice ",
+            "actualicé ",
             "fixed ",
+            "corregi ",
+            "corregí ",
             "hardened ",
             "created ",
             "committed ",
@@ -1458,7 +1488,9 @@ def _implementation_outcome_candidate(label: str, text: str) -> str:
 
 def _looks_like_validation_line(text: str) -> bool:
     lowered = text.lower().strip()
-    return lowered.startswith(("ran ", "validation:", "validated:")) or any(
+    return lowered.startswith(
+        ("ran ", "validation:", "validated:", "validacion:", "validación:")
+    ) or any(
         marker in lowered
         for marker in (
             "pytest",
@@ -1755,6 +1787,8 @@ def _clean_memory_statement(text: str) -> str:
     cleaned = cleaned.strip().strip("\"'")
     lowered = cleaned.lower()
     if "exact validation" in lowered or "validation commands" in lowered:
+        return ""
+    if _looks_like_validation_line(cleaned):
         return ""
     if lowered.startswith(("si querés", "si queres", "if you want")):
         return ""

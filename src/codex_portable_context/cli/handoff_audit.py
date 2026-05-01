@@ -12,6 +12,7 @@ from codex_portable_context.core.handoff_audit import (
     HandoffAuditOptions,
     audit_handoffs,
     render_handoff_audit,
+    write_e2e_manifest,
 )
 from codex_portable_context.core.index import load_index
 
@@ -26,7 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
             "Examples:\n"
             "  codex-session-handoff-audit --limit 20\n"
             "  codex-session-handoff-audit 019dcbe0 019ddab2\n"
-            "  codex-session-handoff-audit --json --no-generate"
+            "  codex-session-handoff-audit --json --no-generate\n"
+            "  codex-session-handoff-audit --write-e2e-manifest out/e2e.json 019dcbe0"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -43,6 +45,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Read existing handoff JSON files instead of regenerating them first.",
     )
     parser.add_argument("--json", action="store_true", help="Print the audit report as JSON.")
+    parser.add_argument(
+        "--write-e2e-manifest",
+        type=Path,
+        help=(
+            "Write a manual-only restart-prompt E2E manifest for the selected "
+            "sessions. This does not launch agents or send messages."
+        ),
+    )
     parser.add_argument("selectors", nargs="*", help="Full session ids or unique id prefixes.")
     return parser
 
@@ -79,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
     else:
         sys.stdout.write(render_handoff_audit(report))
+    if args.write_e2e_manifest:
+        manifest_path = write_e2e_manifest(report, args.write_e2e_manifest.expanduser())
+        sys.stderr.write(f"E2E manifest written: {manifest_path}\n")
     return 0
 
 

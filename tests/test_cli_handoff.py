@@ -681,6 +681,41 @@ def test_handoff_cli_extracts_implementation_outcome_memory(
     )
 
 
+def test_handoff_cli_extracts_spanish_implementation_outcome_memory(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        final_answer_after_request=True,
+        final_answer_message=(
+            "Listo, quedó implementada la capa de manifest E2E manual.\n\n"
+            "Qué suma:\n"
+            "- `codex-session-handoff-audit` escribe un manifest E2E manual.\n"
+            "- El manifest declara `manual_only` y `launches_agents=false`.\n\n"
+            "Validación:\n"
+            "- ran `./scripts/validate-python-v2`"
+        ),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    memory = payload["decisions_and_invariants"]
+    all_statements = " ".join(
+        item["statement"]
+        for key in ("decisions", "invariants", "rejected_paths", "open_architecture_questions")
+        for item in memory[key]
+    )
+    assert "manifest E2E manual" in all_statements
+    assert "launches_agents=false" in all_statements
+    assert "./scripts/validate-python-v2" not in all_statements
+    assert any("implementation_outcome" in item for item in memory["evidence"])
+    assert payload["decisions_and_invariants"]["confidence"] == "high"
+
+
 def test_handoff_cli_bootstrap_prompt_avoids_artifact_next_action(
     tmp_path: Path,
     capsys,

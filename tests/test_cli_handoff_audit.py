@@ -103,6 +103,27 @@ def test_handoff_audit_cli_marks_active_unanswered_session_for_review(
     assert payload["summary"]["purpose_counts"]["active_in_progress"] == 1
 
 
+def test_handoff_audit_cli_marks_active_review_session_for_review(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        include_active=True,
+        active_thread_name="Active Review Session",
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--json", "session-active"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    item = payload["items"][0]
+    assert item["session_purpose"] == "active_in_progress"
+    assert item["readiness"] == "review"
+    assert "no_memory" in item["flags"]
+
+
 def test_handoff_audit_cli_flags_prompt_without_required_format(
     tmp_path: Path,
     capsys,
@@ -157,6 +178,47 @@ def test_handoff_audit_cli_flags_unsafe_first_action(
     assert payload["summary"]["prompt_compliance_counts"]["fail"] == 1
 
 
+def test_handoff_audit_cli_writes_manual_e2e_manifest(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+    manifest_path = tmp_path / "e2e" / "restart-prompts.json"
+
+    exit_code = main(
+        [
+            "--out-dir",
+            str(out_dir),
+            "--write-e2e-manifest",
+            str(manifest_path),
+            "session-rich",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert f"E2E manifest written: {manifest_path}" in captured.err
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["kind"] == "restart_prompt_e2e_manifest"
+    assert manifest["mode"] == "manual_only"
+    assert manifest["safety"]["launches_agents"] is False
+    assert manifest["safety"]["sends_messages"] is False
+    assert manifest["summary"]["cases"] == 1
+    assert manifest["summary"]["prompt_compliance_counts"]["pass"] == 1
+
+    case = manifest["cases"][0]
+    assert case["session_id"] == "session-rich"
+    assert case["prompt_compliance_status"] == "pass"
+    assert "Continue from a local extractive handoff." in case["restart_prompt"]
+    assert case["expected_first_response"]["must_not_use_tools_or_commands"] is True
+    assert case["expected_first_response"]["mode_choices"] == [
+        "review",
+        "plan",
+        "implement",
+    ]
+    assert case["result_template"]["observed"]["used_tools"] is None
+
+
 def test_handoff_audit_cli_can_read_existing_handoffs_without_generating(
     tmp_path: Path,
     capsys,
@@ -187,6 +249,7 @@ def build_fixture_mirror(
     *,
     include_bootstrap: bool = False,
     include_active: bool = False,
+    active_thread_name: str = "Active Session",
 ) -> Path:
     codex_home = tmp_path / ".codex"
     source_dir = codex_home / "sessions" / "2026" / "03" / "16"
@@ -232,7 +295,7 @@ def build_fixture_mirror(
             source_dir / "rollout-2026-03-16T10-15-00-active.jsonl",
             session_id="session-active",
             updated_at="2026-03-16T10:15:00Z",
-            thread_name="Active Session",
+            thread_name=active_thread_name,
             developer_context="Developer context without durable handoff memory markers.",
             final_answer=False,
         )
@@ -264,7 +327,7 @@ def build_fixture_mirror(
         index_records.append(
             {
                 "id": "session-active",
-                "thread_name": "Active Session",
+                "thread_name": active_thread_name,
                 "updated_at": "2026-03-16T10:15:00Z",
             }
         )

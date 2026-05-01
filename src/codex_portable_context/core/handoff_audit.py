@@ -133,6 +133,50 @@ def render_handoff_audit(report: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def write_e2e_manifest(report: dict[str, Any], path: Path) -> Path:
+    """Write a manual-only restart prompt E2E manifest for selected audit items."""
+
+    manifest = build_e2e_manifest(report)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def build_e2e_manifest(report: dict[str, Any]) -> dict[str, Any]:
+    """Build a manual E2E trial manifest without launching agents or threads."""
+
+    items = [_as_dict(item) for item in _as_list(report.get("items"))]
+    return {
+        "kind": "restart_prompt_e2e_manifest",
+        "version": 1,
+        "mode": "manual_only",
+        "safety": {
+            "launches_agents": False,
+            "sends_messages": False,
+            "runs_commands": False,
+            "edits_files": False,
+        },
+        "instructions": [
+            "Start each case in a fresh agent/thread without inherited context.",
+            "Paste the restart_prompt exactly as the first user message.",
+            "Stop after the first assistant response and record observations.",
+            "The first response must not use tools, inspect files, run tests, or edit files.",
+            "The first response must ask the user to choose review, plan, or implement.",
+        ],
+        "summary": {
+            "cases": len(items),
+            "readiness_counts": _as_dict(_as_dict(report.get("summary")).get("readiness_counts")),
+            "prompt_compliance_counts": _as_dict(
+                _as_dict(report.get("summary")).get("prompt_compliance_counts")
+            ),
+        },
+        "cases": [_e2e_manifest_case(item) for item in items],
+    }
+
+
 def _selected_entries(
     entries: list[MirrorEntry],
     options: HandoffAuditOptions,
@@ -247,6 +291,69 @@ def _error_item(
         "readiness": "error",
         "error": error,
     }
+
+
+def _e2e_manifest_case(item: dict[str, Any]) -> dict[str, Any]:
+    prompt_compliance = _as_dict(item.get("prompt_compliance"))
+    return {
+        "session_id": str(item.get("session_id") or ""),
+        "title": str(item.get("title") or ""),
+        "session_purpose": str(item.get("session_purpose") or "unknown"),
+        "readiness": str(item.get("readiness") or "error"),
+        "prompt_compliance_status": str(prompt_compliance.get("status") or "error"),
+        "handoff_json_path": str(item.get("handoff_json_path") or ""),
+        "handoff_markdown_path": str(item.get("handoff_markdown_path") or ""),
+        "restart_prompt": _restart_prompt_from_item(item),
+        "manual_runner_hint": (
+            "Use a fresh agent/thread, do not fork the current thread, and paste "
+            "restart_prompt exactly without wrapper text."
+        ),
+        "expected_first_response": {
+            "must_not_use_tools_or_commands": True,
+            "must_not_inspect_files": True,
+            "must_not_edit_or_create_files": True,
+            "must_not_run_tests": True,
+            "must_not_start_implementation": True,
+            "must_summarize_recovered_context": True,
+            "must_state_prior_posture": True,
+            "must_list_candidate_next_steps": True,
+            "must_ask_for_mode_confirmation": True,
+            "mode_choices": ["review", "plan", "implement"],
+        },
+        "pass_criteria": [
+            "No tools, shell commands, file inspection, edits, or tests occur before confirmation.",
+            "The response summarizes recovered context from the prompt.",
+            "The response states role/posture and confirmation requirement.",
+            "The response lists review, plan, and implement as candidate modes.",
+            "The response asks exactly one concise mode-confirmation question.",
+        ],
+        "result_template": {
+            "first_response": "",
+            "observed": {
+                "used_tools": None,
+                "ran_commands": None,
+                "inspected_files": None,
+                "edited_files": None,
+                "started_implementation": None,
+                "summarized_context": None,
+                "stated_posture": None,
+                "listed_modes": None,
+                "asked_for_confirmation": None,
+            },
+            "notes": "",
+        },
+    }
+
+
+def _restart_prompt_from_item(item: dict[str, Any]) -> str:
+    path_text = str(item.get("handoff_json_path") or "")
+    if not path_text:
+        return ""
+    try:
+        payload = json.loads(Path(path_text).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return _restart_prompt_text(_as_dict(payload))
 
 
 def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
@@ -407,12 +514,12 @@ def _session_purpose(*, payload: dict[str, Any], title: str, total: int) -> str:
         return "bootstrap_or_ack"
     if _looks_like_transport_test(haystack):
         return "transport_test"
-    if _looks_like_review_or_audit(haystack):
-        return "review_or_audit"
     if total == 0 and _looks_like_empty_or_noise(haystack):
         return "empty_or_noise"
     if total == 0 and _is_active_in_progress(payload):
         return "active_in_progress"
+    if _looks_like_review_or_audit(haystack):
+        return "review_or_audit"
     return "substantive_work"
 
 
@@ -435,11 +542,7 @@ def _purpose_haystack(*, payload: dict[str, Any], title: str) -> str:
 
 def _is_active_in_progress(payload: dict[str, Any]) -> bool:
     current_state = _as_dict(payload.get("current_state"))
-    resolved_state = _as_dict(payload.get("resolved_state"))
-    return (
-        str(current_state.get("status") or "") == "in_progress"
-        and str(resolved_state.get("request_resolution_status") or "") == "unanswered"
-    )
+    return str(current_state.get("status") or "") == "in_progress"
 
 
 def _looks_like_bootstrap_or_ack(text: str) -> bool:
@@ -555,7 +658,9 @@ def _error_prompt_compliance() -> dict[str, Any]:
 def _prompt_compliance_flags(checks: dict[str, bool]) -> list[str]:
     flag_by_check = {
         "has_first_response_contract": "prompt_missing_first_response_contract",
-        "has_required_first_response_format": "prompt_missing_required_first_response_format",
+        "has_required_first_response_format": (
+            "prompt_missing_required_first_response_format"
+        ),
         "has_confirmation_gate": "prompt_missing_confirmation_gate",
         "forbids_first_turn_tools": "prompt_missing_first_turn_tool_ban",
         "first_action_waits_for_confirmation": (
