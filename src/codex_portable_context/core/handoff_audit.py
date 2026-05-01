@@ -83,6 +83,15 @@ def render_handoff_audit(report: dict[str, Any]) -> str:
             error=summary.get("readiness_counts", {}).get("error", 0),
         ),
         (
+            "Prompt compliance: pass={passed}, review={review}, fail={fail}, "
+            "error={error}."
+        ).format(
+            passed=summary.get("prompt_compliance_counts", {}).get("pass", 0),
+            review=summary.get("prompt_compliance_counts", {}).get("review", 0),
+            fail=summary.get("prompt_compliance_counts", {}).get("fail", 0),
+            error=summary.get("prompt_compliance_counts", {}).get("error", 0),
+        ),
+        (
             "Purpose: substantive={substantive}, review={review}, active={active}, "
             "bootstrap={bootstrap}, transport={transport}, noise={noise}."
         ).format(
@@ -187,11 +196,13 @@ def _audit_entry(entry: MirrorEntry, *, out_dir: Path, generate: bool) -> dict[s
     sources = _memory_sources(memory)
     role_hint = str(_as_dict(payload.get("reentry_posture")).get("role_hint") or "unknown")
     purpose = _session_purpose(payload=payload, title=entry_title(entry), total=total)
+    prompt_compliance = _prompt_compliance(_restart_prompt_text(payload))
     flags = _quality_flags(
         payload=payload,
         total=total,
         confidence=confidence,
         role_hint=role_hint,
+        prompt_compliance=prompt_compliance,
     )
     readiness = _readiness(flags=flags, error="", purpose=purpose)
 
@@ -207,6 +218,7 @@ def _audit_entry(entry: MirrorEntry, *, out_dir: Path, generate: bool) -> dict[s
         "covered": total > 0,
         "role_hint": role_hint,
         "sources": sources,
+        "prompt_compliance": prompt_compliance,
         "flags": flags,
         "quality_gates": flags,
         "readiness": readiness,
@@ -229,6 +241,7 @@ def _error_item(
         "covered": False,
         "role_hint": "unknown",
         "sources": [],
+        "prompt_compliance": _error_prompt_compliance(),
         "flags": flags,
         "quality_gates": flags,
         "readiness": "error",
@@ -254,6 +267,7 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         "empty_or_noise": 0,
         "unknown": 0,
     }
+    prompt_compliance_counts = {"pass": 0, "review": 0, "fail": 0, "error": 0}
     total_memory = 0
     covered = 0
     errored = 0
@@ -265,6 +279,12 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         readiness_counts[readiness if readiness in readiness_counts else "error"] += 1
         purpose = str(item.get("session_purpose") or "unknown")
         purpose_counts[purpose if purpose in purpose_counts else "unknown"] += 1
+        prompt_status = str(
+            _as_dict(item.get("prompt_compliance")).get("status") or "error"
+        )
+        prompt_compliance_counts[
+            prompt_status if prompt_status in prompt_compliance_counts else "error"
+        ] += 1
         total = int(item.get("total_memory_items") or 0)
         total_memory += total
         if total > 0:
@@ -283,6 +303,7 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         "confidence_counts": confidence_counts,
         "readiness_counts": readiness_counts,
         "purpose_counts": purpose_counts,
+        "prompt_compliance_counts": prompt_compliance_counts,
     }
 
 
@@ -303,6 +324,7 @@ def _quality_flags(
     total: int,
     confidence: str,
     role_hint: str,
+    prompt_compliance: dict[str, Any],
 ) -> list[str]:
     flags: list[str] = []
     restart_prompt = _restart_prompt_text(payload)
@@ -333,6 +355,7 @@ def _quality_flags(
         artifacts.get("repo_dirty_paths")
     ):
         flags.append("dirty_repo_without_paths")
+    flags.extend(str(flag) for flag in _as_list(prompt_compliance.get("flags")))
     return flags
 
 
@@ -345,11 +368,17 @@ def _readiness(*, flags: list[str], error: str, purpose: str) -> str:
         "missing_restart_prompt",
         "missing_role_hint",
         "no_memory",
+        "prompt_missing_first_response_contract",
+        "prompt_missing_confirmation_gate",
+        "prompt_unsafe_first_action",
     }
     if purpose == "active_in_progress":
         active_hard_flags = {
             "missing_restart_prompt",
             "missing_role_hint",
+            "prompt_missing_first_response_contract",
+            "prompt_missing_confirmation_gate",
+            "prompt_unsafe_first_action",
         }
         if not any(flag in active_hard_flags for flag in flags):
             return "review"
@@ -361,6 +390,9 @@ def _readiness(*, flags: list[str], error: str, purpose: str) -> str:
         "bare_recommended_artifacts",
         "missing_validation_summary",
         "dirty_repo_without_paths",
+        "prompt_missing_required_first_response_format",
+        "prompt_missing_first_turn_tool_ban",
+        "prompt_first_action_missing_confirmation_wait",
     }
     if any(flag in weak_flags for flag in flags):
         return "weak"
@@ -481,6 +513,143 @@ def _is_minimal_expected(*, purpose: str, flags: list[str]) -> bool:
         "bare_recommended_artifacts",
     }
     return all(flag in tolerated_flags for flag in flags)
+
+
+def _prompt_compliance(restart_prompt: str) -> dict[str, Any]:
+    normalized = " ".join(restart_prompt.lower().split())
+    first_action = _first_action_line(restart_prompt)
+    checks = {
+        "has_restart_prompt": bool(restart_prompt),
+        "has_first_response_contract": "first response contract:" in normalized,
+        "has_required_first_response_format": (
+            "required first response format:" in normalized
+        ),
+        "has_confirmation_gate": _has_confirmation_gate(normalized),
+        "forbids_first_turn_tools": _forbids_first_turn_tools(normalized),
+        "first_action_waits_for_confirmation": _first_action_waits(first_action),
+        "no_unsafe_first_action": not _is_unsafe_first_action(first_action),
+    }
+    flags = _prompt_compliance_flags(checks)
+    status = (
+        _prompt_compliance_status(flags)
+        if checks["has_restart_prompt"]
+        else "error"
+    )
+    return {
+        "status": status,
+        "checks": checks,
+        "flags": flags,
+        "first_action": first_action,
+    }
+
+
+def _error_prompt_compliance() -> dict[str, Any]:
+    return {
+        "status": "error",
+        "checks": {},
+        "flags": [],
+        "first_action": "",
+    }
+
+
+def _prompt_compliance_flags(checks: dict[str, bool]) -> list[str]:
+    flag_by_check = {
+        "has_first_response_contract": "prompt_missing_first_response_contract",
+        "has_required_first_response_format": "prompt_missing_required_first_response_format",
+        "has_confirmation_gate": "prompt_missing_confirmation_gate",
+        "forbids_first_turn_tools": "prompt_missing_first_turn_tool_ban",
+        "first_action_waits_for_confirmation": (
+            "prompt_first_action_missing_confirmation_wait"
+        ),
+        "no_unsafe_first_action": "prompt_unsafe_first_action",
+    }
+    flags: list[str] = []
+    if not checks.get("has_restart_prompt"):
+        return flags
+    for check, flag in flag_by_check.items():
+        if not checks.get(check):
+            flags.append(flag)
+    return flags
+
+
+def _prompt_compliance_status(flags: list[str]) -> str:
+    fail_flags = {
+        "prompt_missing_first_response_contract",
+        "prompt_missing_confirmation_gate",
+        "prompt_unsafe_first_action",
+    }
+    if any(flag in fail_flags for flag in flags):
+        return "fail"
+    if flags:
+        return "review"
+    return "pass"
+
+
+def _has_confirmation_gate(normalized_prompt: str) -> bool:
+    return (
+        "before taking action" in normalized_prompt
+        and "confirm" in normalized_prompt
+        and "review, plan, or implement" in normalized_prompt
+    ) or (
+        "wait for user confirmation" in normalized_prompt
+        and "review" in normalized_prompt
+        and "plan" in normalized_prompt
+        and "implement" in normalized_prompt
+    )
+
+
+def _forbids_first_turn_tools(normalized_prompt: str) -> bool:
+    required_markers = (
+        "do not run commands",
+        "do not use tools",
+        "do not implement",
+        "do not implement, edit, create files, or run tests",
+        "first response",
+    )
+    return all(marker in normalized_prompt for marker in required_markers)
+
+
+def _first_action_line(restart_prompt: str) -> str:
+    for line in restart_prompt.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("first action:"):
+            return stripped
+    return ""
+
+
+def _first_action_waits(first_action: str) -> bool:
+    normalized = " ".join(first_action.lower().split())
+    return (
+        normalized.startswith("first action:")
+        and "wait" in normalized
+        and "confirmation" in normalized
+        and "before" in normalized
+        and ("using tools" in normalized or "changing files" in normalized)
+    )
+
+
+def _is_unsafe_first_action(first_action: str) -> bool:
+    normalized = " ".join(first_action.lower().split())
+    if not normalized:
+        return False
+    if _first_action_waits(first_action):
+        return False
+    unsafe_markers = (
+        "run command",
+        "run commands",
+        "inspect file",
+        "inspect files",
+        "edit file",
+        "edit files",
+        "create file",
+        "create files",
+        "run test",
+        "run tests",
+        "implement",
+        "make changes",
+        "start implementation",
+    )
+    return any(marker in normalized for marker in unsafe_markers)
 
 
 def _restart_prompt_text(payload: dict[str, Any]) -> str:

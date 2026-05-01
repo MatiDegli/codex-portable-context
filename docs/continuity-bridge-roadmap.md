@@ -35,9 +35,10 @@ Status as of the Phase 5h consolidation pass:
 - Phases 1 through 5h are implemented in the Python handoff generator, Markdown renderer, reader integration, and audit CLI.
 - `codex-session-handoff --restart-prompt` emits a copy-ready fresh-session prompt.
 - The static reader exposes a copy button for the generated restart prompt.
-- `codex-session-handoff-audit` reports readiness, purpose, quality gates, memory counts, role hints, and evidence sources.
-- Recent real-sample audit over 20 sessions: `6 ready`, `2 review`, `0 weak`, `12 minimal_expected`, `0 error`.
-- The remaining `review` samples are active in-progress sessions; they have no weak prompt gates and are intentionally review-gated until their turns are resolved.
+- `codex-session-handoff-audit` reports readiness, purpose, quality gates, prompt compliance, memory counts, role hints, and evidence sources.
+- Recent real-sample audit over 20 sessions: `7 ready`, `1 review`, `0 weak`, `12 minimal_expected`, `0 error`.
+- Prompt compliance over the same sample: `20 pass`, `0 review`, `0 fail`, `0 error`.
+- The remaining `review` sample is active in progress; active sessions are intentionally review-gated until their turns are resolved.
 - Bootstrap/ACK sessions are now classified as `minimal_expected` instead of polluting weak continuity counts.
 
 E2E restart prompt trial:
@@ -47,6 +48,7 @@ E2E restart prompt trial:
 - The architecture/boundary prompt initially stayed safe but collapsed to only a mode question.
 - The restart prompt now includes a required first-response format to make context recovery explicit; the architecture/boundary retest produced the expected structured response.
 - Active in-progress prompts now use a context-recovery next action rather than a generic continuation action; an E2E trial confirmed the prompt did not use tools or start implementation.
+- Static prompt compliance checks now verify the first-response contract, required response format, confirmation gate, first-turn tool ban, and safe first action without initializing agents.
 - The local `agent-bridge-public` MCP surface supports bounded send/receive in this environment, but cannot create new threads, so fresh-agent E2E trials currently use local subagents.
 
 Validation commands for this snapshot:
@@ -309,6 +311,12 @@ Add handoff-audit quality gates:
 - `bare_recommended_artifacts`
 - `missing_validation_summary`
 - `dirty_repo_without_paths`
+- `prompt_missing_first_response_contract`
+- `prompt_missing_required_first_response_format`
+- `prompt_missing_confirmation_gate`
+- `prompt_missing_first_turn_tool_ban`
+- `prompt_first_action_missing_confirmation_wait`
+- `prompt_unsafe_first_action`
 
 Add a readiness classification:
 

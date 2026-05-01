@@ -43,6 +43,8 @@ def test_handoff_audit_cli_json_reports_counts_and_sources(
     assert payload["items"][0]["quality_gates"] == payload["items"][0]["flags"]
     assert payload["items"][0]["counts"]["invariants"] >= 1
     assert "context_structural_memory" in payload["items"][0]["sources"]
+    assert payload["items"][0]["prompt_compliance"]["status"] == "pass"
+    assert payload["summary"]["prompt_compliance_counts"]["pass"] == 1
 
 
 def test_handoff_audit_cli_marks_sparse_prompt_minimal_expected(
@@ -99,6 +101,60 @@ def test_handoff_audit_cli_marks_active_unanswered_session_for_review(
     assert "no_memory" in item["flags"]
     assert payload["summary"]["readiness_counts"]["review"] == 1
     assert payload["summary"]["purpose_counts"]["active_in_progress"] == 1
+
+
+def test_handoff_audit_cli_flags_prompt_without_required_format(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+    assert main(["--out-dir", str(out_dir), "session-rich"]) == 0
+    capsys.readouterr()
+    handoff_json = out_dir / "handoffs" / "session-rich.json"
+    mutate_restart_prompt(
+        handoff_json,
+        lambda text: text.replace("Required first response format:", "Response format:"),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--no-generate", "--json", "session-rich"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    item = payload["items"][0]
+    assert item["prompt_compliance"]["status"] == "review"
+    assert "prompt_missing_required_first_response_format" in item["flags"]
+    assert item["readiness"] == "review"
+    assert payload["summary"]["prompt_compliance_counts"]["review"] == 1
+
+
+def test_handoff_audit_cli_flags_unsafe_first_action(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+    assert main(["--out-dir", str(out_dir), "session-rich"]) == 0
+    capsys.readouterr()
+    handoff_json = out_dir / "handoffs" / "session-rich.json"
+    mutate_restart_prompt(
+        handoff_json,
+        lambda text: replace_first_action(
+            text,
+            "First action: inspect files and implement the next change.",
+        ),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--no-generate", "--json", "session-rich"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    item = payload["items"][0]
+    assert item["prompt_compliance"]["status"] == "fail"
+    assert "prompt_unsafe_first_action" in item["flags"]
+    assert "prompt_first_action_missing_confirmation_wait" in item["flags"]
+    assert item["readiness"] == "weak"
+    assert payload["summary"]["prompt_compliance_counts"]["fail"] == 1
 
 
 def test_handoff_audit_cli_can_read_existing_handoffs_without_generating(
@@ -285,3 +341,23 @@ def write_session(
         "\n".join(json.dumps(record) for record in records) + "\n",
         encoding="utf-8",
     )
+
+
+def mutate_restart_prompt(path: Path, mutator) -> None:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["restart_prompt"]["text"] = mutator(payload["restart_prompt"]["text"])
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def replace_first_action(text: str, replacement: str) -> str:
+    lines = []
+    replaced = False
+    for line in text.splitlines():
+        if line.lower().startswith("first action:"):
+            lines.append(replacement)
+            replaced = True
+        else:
+            lines.append(line)
+    if not replaced:
+        lines.append(replacement)
+    return "\n".join(lines)
