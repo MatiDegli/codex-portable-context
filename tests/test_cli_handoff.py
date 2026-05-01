@@ -588,7 +588,7 @@ def test_handoff_cli_extracts_review_findings_and_risks(
     assert "corrupt recovery state" in payload["restart_prompt"]["text"]
     assert payload["continuation_brief"]["next_best_action"].startswith(
         "Address the leading open risk or question before taking a new "
-        "implementation step: Medium: malformed recovery state"
+        "implementation step: No coverage for corrupt recovery state"
     )
 
 
@@ -617,6 +617,57 @@ def test_handoff_cli_uses_review_recommendation_for_next_action(
             "Continue from the captured recommendation: Validate descriptor "
             "coverage before widening retrieval."
         )
+    )
+
+
+def test_handoff_cli_extracts_implementation_outcome_memory(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request="Apply the materialize follow-up.",
+        final_answer_after_request=True,
+        final_answer_message=(
+            "Implemented and committed `0158972 Clarify zero-write proposal "
+            "materialization`.\n\n"
+            "Changed:\n"
+            "- `src/workstation/slice_proposals.py`\n"
+            "- `tests/test_slice_proposals.py`\n\n"
+            "Behavior now:\n"
+            "- Ready proposals with no writable create actions return "
+            "`noop_no_writable_deliverable`.\n"
+            "- Materialization summaries report `created_count=0` without treating "
+            "that as a failure.\n\n"
+            "Known caveat:\n"
+            "- Existing proposal fixtures still do not cover corrupt metadata.\n\n"
+            "Validation:\n"
+            "- ran `python -m pytest -q`"
+        ),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    memory = payload["decisions_and_invariants"]
+    all_statements = " ".join(
+        item["statement"]
+        for key in ("decisions", "invariants", "rejected_paths", "open_architecture_questions")
+        for item in memory[key]
+    )
+    assert "Clarify zero-write proposal materialization" in all_statements
+    assert "noop_no_writable_deliverable" in all_statements
+    assert "created_count=0" in all_statements
+    assert "corrupt metadata" in all_statements
+    assert "python -m pytest" not in all_statements
+    assert any("implementation_outcome" in item for item in memory["evidence"])
+    assert payload["decisions_and_invariants"]["confidence"] == "high"
+    assert payload["continuation_brief"]["next_best_action"].startswith(
+        "Address the leading open risk or question before taking a new "
+        "implementation step: Existing proposal fixtures still do not cover "
+        "corrupt metadata"
     )
 
 

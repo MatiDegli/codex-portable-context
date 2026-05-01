@@ -1219,20 +1219,26 @@ def _build_decisions_and_invariants(
 
     sources = [
         ("continuation_brief", _string(continuation_brief.get("what_we_were_doing"))),
-        ("continuation_brief", _string(continuation_brief.get("last_meaningful_outcome"))),
         ("resolved_state", _string(resolved_state.get("contextual_user_request"))),
-        ("resolved_state", _string(resolved_state.get("resolution_summary"))),
         ("changed_artifacts", _string(changed_artifacts.get("summary"))),
     ]
     if parsed:
         sources.extend(_structural_memory_sources(parsed))
         sources.extend(_review_memory_sources(parsed))
+        sources.extend(_implementation_outcome_sources(parsed))
         sources.extend(
             ("recent_window", block.text)
             for block in parsed.conversation_entries[-8:]
             if block.kind in {"user", "assistant"}
         )
     else:
+        sources.append(
+            (
+                "continuation_brief",
+                _string(continuation_brief.get("last_meaningful_outcome")),
+            )
+        )
+        sources.append(("resolved_state", _string(resolved_state.get("resolution_summary"))))
         sources.extend(
             ("recent_window", _string(item.get("text")))
             for item in recent_window
@@ -1249,6 +1255,8 @@ def _build_decisions_and_invariants(
             )
             if _is_rejected_path(candidate):
                 _append_memory_item(rejected_paths, item)
+            elif _is_implementation_outcome_decision(candidate):
+                _append_memory_item(decisions, item)
             elif _is_open_architecture_question(candidate):
                 _append_memory_item(open_questions, item)
             elif _is_invariant(candidate):
@@ -1300,6 +1308,174 @@ def _review_memory_sources(parsed: ParsedSession) -> list[tuple[str, str]]:
                 )
             )
     return sources
+
+
+def _implementation_outcome_sources(parsed: ParsedSession) -> list[tuple[str, str]]:
+    sources: list[tuple[str, str]] = []
+    for block in parsed.conversation_entries[-RECENT_ACTION_LOOKBACK:]:
+        if block.kind != "assistant":
+            continue
+        candidates = _implementation_outcome_candidates_from_text(block.text)
+        if candidates:
+            sources.append(
+                (
+                    "implementation_outcome",
+                    "\n".join(f"- {candidate}" for candidate in candidates),
+                )
+            )
+    return sources
+
+
+def _implementation_outcome_candidates_from_text(text: str) -> list[str]:
+    if not _has_implementation_outcome_signal(text):
+        return []
+
+    candidates: list[str] = []
+    active_label = ""
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        heading = _implementation_outcome_heading(line)
+        if heading == "__skip__":
+            active_label = ""
+            continue
+        if heading:
+            active_label = heading
+            continue
+
+        if line.startswith("#"):
+            active_label = ""
+            continue
+
+        first_line_candidate = _implementation_outcome_first_line_candidate(line)
+        if first_line_candidate:
+            candidates.append(first_line_candidate)
+            continue
+
+        if not active_label:
+            continue
+        list_item = _structural_list_item(line)
+        if not list_item:
+            continue
+
+        candidate = _implementation_outcome_candidate(active_label, list_item)
+        if candidate:
+            candidates.append(candidate)
+
+    return candidates[:48]
+
+
+def _has_implementation_outcome_signal(text: str) -> bool:
+    lowered = text.lower()
+    if (
+        "continue from a local extractive handoff" in lowered
+        or "first response contract" in lowered
+    ):
+        return False
+    markers = (
+        "implemented",
+        "committed",
+        "behavior now",
+        "what changed",
+        "changed:",
+        "known caveat",
+        "caveat:",
+        "not implemented",
+        "not included",
+        "follow-up",
+        "remaining",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _implementation_outcome_heading(line: str) -> str:
+    stripped = line.strip()
+    looks_like_heading = stripped.startswith("#") or (
+        stripped.endswith(":") and not _is_memory_bullet_line(stripped)
+    )
+    if not looks_like_heading and not (
+        stripped.startswith("**") and stripped.endswith("**")
+    ):
+        return ""
+    cleaned = stripped.strip("# ").strip()
+    cleaned = re.sub(r"^\*\*|\*\*$", "", cleaned).strip()
+    cleaned = cleaned.rstrip(":").strip()
+    lowered = cleaned.lower()
+    accepted = {
+        "behavior now": "Behavior now",
+        "what changed": "What changed",
+        "contract": "Contract",
+        "known caveat": "Known caveat",
+        "caveat": "Known caveat",
+        "remaining": "Remaining",
+        "follow-up": "Follow-up",
+        "follow up": "Follow-up",
+        "not implemented": "Not implemented",
+        "not included": "Not included",
+    }
+    if lowered in accepted:
+        return accepted[lowered]
+    if lowered in {"changed", "changes", "validation", "validated", "tests"}:
+        return "__skip__"
+    if looks_like_heading:
+        return "__skip__"
+    return ""
+
+
+def _implementation_outcome_first_line_candidate(line: str) -> str:
+    cleaned = line.strip()
+    if _is_memory_bullet_line(cleaned):
+        return ""
+    lowered = cleaned.lower()
+    if not lowered.startswith(
+        (
+            "implemented ",
+            "implemented and ",
+            "added ",
+            "updated ",
+            "fixed ",
+            "hardened ",
+            "created ",
+            "committed ",
+        )
+    ):
+        return ""
+    if _looks_like_validation_line(cleaned):
+        return ""
+    return _excerpt_text(f"Implementation outcome: {cleaned}", limit=240)
+
+
+def _implementation_outcome_candidate(label: str, text: str) -> str:
+    cleaned = text.strip()
+    if not cleaned or _looks_like_validation_line(cleaned):
+        return ""
+    if label in {"Changed", "Changes"} and _looks_like_path_only_item(cleaned):
+        return ""
+    return _excerpt_text(f"{label}: {cleaned}", limit=240)
+
+
+def _looks_like_validation_line(text: str) -> bool:
+    lowered = text.lower().strip()
+    return lowered.startswith(("ran ", "validation:", "validated:")) or any(
+        marker in lowered
+        for marker in (
+            "pytest",
+            "ruff check",
+            "mypy",
+            "all checks passed",
+        )
+    )
+
+
+def _looks_like_path_only_item(text: str) -> bool:
+    cleaned = text.strip().strip("`")
+    if not cleaned:
+        return False
+    if " " in cleaned:
+        return False
+    return "/" in cleaned or "." in Path(cleaned).name
 
 
 def _review_memory_candidates_from_text(text: str) -> list[str]:
@@ -1689,6 +1865,15 @@ def _has_memory_signal(text: str) -> bool:
         "should probably",
         "public docs",
         "conflict",
+        "implementation outcome",
+        "behavior now",
+        "what changed",
+        "contract:",
+        "known caveat",
+        "not implemented",
+        "not included",
+        "follow-up:",
+        "remaining",
     )
     return any(marker in lowered for marker in markers)
 
@@ -1748,6 +1933,9 @@ def _is_decision(text: str) -> bool:
         "recommendation",
         "recommended next step",
         "resolved during review",
+        "implementation outcome",
+        "behavior now",
+        "what changed",
     )
     return any(marker in lowered for marker in markers)
 
@@ -1786,6 +1974,7 @@ def _is_invariant(text: str) -> bool:
         "no revert",
         "sin promoción",
         "sin promocion",
+        "contract:",
     )
     return any(marker in lowered for marker in markers)
 
@@ -1806,6 +1995,8 @@ def _is_rejected_path(text: str) -> bool:
         "not replace it",
         "sin promoción automática",
         "sin promocion automatica",
+        "not implemented",
+        "not included",
     )
     return any(marker in lowered for marker in negative_markers)
 
@@ -1841,8 +2032,23 @@ def _is_open_architecture_question(text: str) -> bool:
         "should probably",
         "corrupt",
         "malformed",
+        "known caveat",
+        "caveat",
+        "follow-up:",
+        "remaining",
     )
     return any(marker in lowered for marker in markers)
+
+
+def _is_implementation_outcome_decision(text: str) -> bool:
+    lowered = text.lower()
+    return lowered.startswith(
+        (
+            "implementation outcome:",
+            "behavior now:",
+            "what changed:",
+        )
+    )
 
 
 def _memory_evidence(*groups: list[dict[str, str]]) -> list[str]:
@@ -2307,7 +2513,10 @@ def _looks_like_transport_initialization_request(text: str) -> bool:
 
 
 def _specific_next_action_from_memory(decisions_and_invariants: dict[str, Any]) -> str:
-    for item in _as_list(decisions_and_invariants.get("open_architecture_questions")):
+    open_items = _prioritized_open_memory_items(
+        _as_list(decisions_and_invariants.get("open_architecture_questions"))
+    )
+    for item in open_items:
         statement = _memory_statement_for_action(item)
         if statement:
             return _excerpt_text(
@@ -2317,10 +2526,16 @@ def _specific_next_action_from_memory(decisions_and_invariants: dict[str, Any]) 
             )
 
     for item in _as_list(decisions_and_invariants.get("decisions")):
+        memory = _as_dict(item)
         statement = _memory_statement_for_action(item)
-        raw_statement = _string(_as_dict(item).get("statement")) or _string(item)
+        raw_statement = _string(memory.get("statement")) or _string(item)
+        source = _string(memory.get("source"))
         lowered = f"{raw_statement} {statement}".lower()
         if not statement:
+            continue
+        if source == "implementation_outcome" and not lowered.startswith(
+            ("recommendation:", "recommended next step:")
+        ):
             continue
         if any(
             marker in lowered
@@ -2332,11 +2547,6 @@ def _specific_next_action_from_memory(decisions_and_invariants: dict[str, Any]) 
                 "validate ",
                 "review ",
                 "inspect ",
-                "implement ",
-                "build ",
-                "create ",
-                "harden ",
-                "write ",
             )
         ):
             return _excerpt_text(
@@ -2344,6 +2554,30 @@ def _specific_next_action_from_memory(decisions_and_invariants: dict[str, Any]) 
                 limit=320,
             )
     return ""
+
+
+def _prioritized_open_memory_items(items: list[Any]) -> list[Any]:
+    priority: list[Any] = []
+    remaining: list[Any] = []
+    for item in items:
+        memory = _as_dict(item)
+        statement = _string(memory.get("statement")) or _string(item)
+        source = _string(memory.get("source"))
+        lowered = statement.lower()
+        if source == "implementation_outcome" or any(
+            marker in lowered
+            for marker in (
+                "known caveat",
+                "residual risk",
+                "residual risks",
+                "blocker",
+                "remaining",
+            )
+        ):
+            priority.append(item)
+        else:
+            remaining.append(item)
+    return [*priority, *remaining]
 
 
 def _specific_next_action_from_artifacts(changed_artifacts: dict[str, Any]) -> str:
@@ -2413,6 +2647,7 @@ def _strip_action_memory_label(statement: str) -> str:
         "blockers",
         "blocker",
         "known risks",
+        "known caveat",
         "important caveat",
     }
     if label.strip().lower() in accepted_labels and rest.strip():

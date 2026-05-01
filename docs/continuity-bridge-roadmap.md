@@ -422,6 +422,36 @@ Acceptance checks:
 - Recommended artifacts inside the repo render as `src/...`, `tests/...`, or docs paths.
 - Restart prompts remain untruncated after hygiene changes.
 
+## Phase 5h: Implementation Outcome Memory Extraction
+
+Preserve what changed conceptually after implementation turns, not only which files changed.
+
+Extract conservative memory from implementation summaries such as:
+
+- `Implemented and committed ...`
+- `Behavior now:`
+- `What changed:`
+- `Contract:`
+- `Known caveat:`
+- `Not implemented:`
+- `Follow-up:`
+- `Remaining:`
+
+Implementation guidance:
+
+- Treat new behavior and implementation summaries as decisions.
+- Treat explicit contracts as invariants.
+- Treat caveats, remaining work, blockers, and follow-ups as open questions or risks.
+- Skip `Changed:` file-only sections because artifact extraction already owns paths.
+- Skip validation command bullets because `validation_summary` already owns them.
+- Do not turn implementation outcomes into next-action recommendations unless they are explicitly recommendations.
+
+Acceptance checks:
+
+- Substantive implementation sessions with behavior summaries are not marked `weak`.
+- `decisions_and_invariants.evidence` includes `implementation_outcome` when extracted.
+- Restart prompts preserve behavior-level outcomes without duplicating validation commands.
+
 ## Phase 6: Provider-Agnostic Continuity Quality
 
 Keep the new bridge fields provider-neutral.
