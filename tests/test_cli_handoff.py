@@ -315,6 +315,43 @@ def test_handoff_cli_marks_question_answered_after_final_response(
     assert "The final answer explains why the IDE output was empty." in markdown
 
 
+def test_handoff_cli_filters_command_paths_and_prefers_resolution_outcome(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        final_answer_after_request=True,
+        final_answer_message=(
+            "Implemented the Slack bound-thread sync slice.\n\n"
+            "New command:\n"
+            "```bash\n"
+            "workstation slack sync-bound-thread --repo-root /path/to/repo "
+            "--binding-id SLK-BIND-001 --json\n"
+            "```\n\n"
+            "It reads `.workstation/.env`, but leaves `.agent-bridge/` and "
+            "`workflow/` outside the commit.\n\n"
+            "Changed file: [sync.py](/home/tester/project/src/workstation/slack/sync.py)."
+        ),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    recommended = payload["changed_artifacts"]["recommended_inspection_order"]
+    assert payload["current_state"]["last_meaningful_outcome"].startswith(
+        "Implemented the Slack bound-thread sync slice."
+    )
+    assert not any(path.startswith("bash") for path in recommended)
+    assert not any(" --repo-root " in path for path in recommended)
+    assert ".workstation/.env" not in recommended
+    assert ".agent-bridge/" not in recommended
+    assert "workflow/" not in recommended
+    assert "/home/tester/project/src/workstation/slack/sync.py" in recommended
+
+
 def test_handoff_cli_expands_contextual_short_follow_up(
     tmp_path: Path,
     capsys,

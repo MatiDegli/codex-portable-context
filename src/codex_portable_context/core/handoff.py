@@ -996,11 +996,32 @@ def _normalize_artifact_path(path: str) -> str:
     cleaned = cleaned.rstrip(".,;)")
     if not cleaned or cleaned.startswith(("http://", "https://")):
         return ""
+    if _looks_like_shell_command_path(cleaned):
+        return ""
     if "\n" in cleaned or len(cleaned) > 260:
+        return ""
+    if re.search(r"\s--?[A-Za-z0-9][\w-]*(?:\s|=)", cleaned):
         return ""
     if "/" not in cleaned and "." not in Path(cleaned).name:
         return ""
     return cleaned
+
+
+def _looks_like_shell_command_path(path: str) -> bool:
+    first_token = path.strip().split(maxsplit=1)[0] if path.strip() else ""
+    return first_token in {
+        "bash",
+        "sh",
+        "python",
+        "python3",
+        "uv",
+        "pytest",
+        "ruff",
+        "mypy",
+        "workstation",
+        "codex-session-handoff",
+        "codex-session-mirror",
+    }
 
 
 def _recommended_inspection_order(
@@ -1012,8 +1033,23 @@ def _recommended_inspection_order(
         path = item.get("path", "")
         if not path or path in ordered:
             continue
+        if not _is_recommended_artifact_path(path):
+            continue
         ordered.append(path)
     return ordered
+
+
+def _is_recommended_artifact_path(path: str) -> bool:
+    normalized = path.strip().replace("\\", "/")
+    if not normalized:
+        return False
+    if normalized in {".codex", ".agent-bridge", ".agent-bridge/", "workflow", "workflow/"}:
+        return False
+    if normalized.startswith((".codex/", ".agent-bridge/", "workflow/")):
+        return False
+    if normalized.endswith(".env") or "/.env" in normalized:
+        return False
+    return True
 
 
 def _changed_artifacts_summary(
@@ -2021,11 +2057,10 @@ def _build_current_state(
             or last_substantive_user_request
             or _string(summary.get("preview"))
         )
-    last_meaningful_outcome = (
-        recent_actions[0]
-        if recent_actions
-        else _string(resolved_state.get("resolution_summary"))
-        or _string(summary.get("last_assistant_message"))
+    last_meaningful_outcome = _current_state_outcome(
+        resolved_state=resolved_state,
+        summary=summary,
+        recent_actions=recent_actions,
     )
     if status == "blocked":
         next_action = "Inspect the latest aborted turn or failing command before continuing."
@@ -2056,6 +2091,22 @@ def _build_current_state(
         "next_recommended_action": next_action,
         "known_blocker": blocker,
     }
+
+
+def _current_state_outcome(
+    *,
+    resolved_state: dict[str, str],
+    summary: dict[str, Any],
+    recent_actions: list[str],
+) -> str:
+    resolution_status = _string(resolved_state.get("request_resolution_status"))
+    resolution_summary = _string(resolved_state.get("resolution_summary"))
+    if resolution_status in {"answered", "handled_with_changes", "completed"}:
+        if resolution_summary:
+            return resolution_summary
+    if recent_actions:
+        return recent_actions[0]
+    return resolution_summary or _string(summary.get("last_assistant_message"))
 
 
 def _build_continuity_entry(
