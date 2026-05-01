@@ -72,9 +72,17 @@ def render_handoff_audit(report: dict[str, Any]) -> str:
             low=summary.get("confidence_counts", {}).get("low", 0),
             average=float(summary.get("average_memory_items", 0.0)),
         ),
+        (
+            "Readiness: ready={ready}, review={review}, weak={weak}, error={error}."
+        ).format(
+            ready=summary.get("readiness_counts", {}).get("ready", 0),
+            review=summary.get("readiness_counts", {}).get("review", 0),
+            weak=summary.get("readiness_counts", {}).get("weak", 0),
+            error=summary.get("readiness_counts", {}).get("error", 0),
+        ),
         "",
         (
-            f"{'SESSION':<8}  {'TITLE':<34}  {'CONF':<6}  "
+            f"{'SESSION':<8}  {'TITLE':<32}  {'READY':<6}  {'CONF':<6}  "
             f"{'D':>2} {'I':>2} {'R':>2} {'O':>2}  {'ROLE':<18}  "
             f"{'SOURCES':<28}  FLAGS"
         ),
@@ -87,7 +95,8 @@ def render_handoff_audit(report: dict[str, Any]) -> str:
         flags = ", ".join(str(flag) for flag in _as_list(item.get("flags"))) or "-"
         lines.append(
             f"{str(item.get('session_id', ''))[:8]:<8}  "
-            f"{truncate(str(item.get('title') or ''), 34):<34}  "
+            f"{truncate(str(item.get('title') or ''), 32):<32}  "
+            f"{str(item.get('readiness') or 'error'):<6}  "
             f"{str(item.get('confidence') or 'error'):<6}  "
             f"{int(counts.get('decisions', 0)):>2} "
             f"{int(counts.get('invariants', 0)):>2} "
@@ -163,7 +172,13 @@ def _audit_entry(entry: MirrorEntry, *, out_dir: Path, generate: bool) -> dict[s
     confidence = str(memory.get("confidence") or "unknown")
     sources = _memory_sources(memory)
     role_hint = str(_as_dict(payload.get("reentry_posture")).get("role_hint") or "unknown")
-    flags = _quality_flags(total=total, confidence=confidence)
+    flags = _quality_flags(
+        payload=payload,
+        total=total,
+        confidence=confidence,
+        role_hint=role_hint,
+    )
+    readiness = _readiness(flags=flags, error="")
 
     return {
         "session_id": session_id,
@@ -177,6 +192,8 @@ def _audit_entry(entry: MirrorEntry, *, out_dir: Path, generate: bool) -> dict[s
         "role_hint": role_hint,
         "sources": sources,
         "flags": flags,
+        "quality_gates": flags,
+        "readiness": readiness,
     }
 
 
@@ -196,12 +213,15 @@ def _error_item(
         "role_hint": "unknown",
         "sources": [],
         "flags": flags,
+        "quality_gates": flags,
+        "readiness": "error",
         "error": error,
     }
 
 
 def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
     confidence_counts = {"high": 0, "medium": 0, "low": 0, "unknown": 0, "error": 0}
+    readiness_counts = {"ready": 0, "review": 0, "weak": 0, "error": 0}
     total_memory = 0
     covered = 0
     errored = 0
@@ -209,6 +229,8 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
     for item in items:
         confidence = str(item.get("confidence") or "unknown")
         confidence_counts[confidence if confidence in confidence_counts else "unknown"] += 1
+        readiness = str(item.get("readiness") or "error")
+        readiness_counts[readiness if readiness in readiness_counts else "error"] += 1
         total = int(item.get("total_memory_items") or 0)
         total_memory += total
         if total > 0:
@@ -225,6 +247,7 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         "coverage_ratio": covered / audited if audited else 0.0,
         "average_memory_items": total_memory / audited if audited else 0.0,
         "confidence_counts": confidence_counts,
+        "readiness_counts": readiness_counts,
     }
 
 
@@ -239,15 +262,128 @@ def _memory_sources(memory: dict[str, Any]) -> list[str]:
     return sources
 
 
-def _quality_flags(*, total: int, confidence: str) -> list[str]:
+def _quality_flags(
+    *,
+    payload: dict[str, Any],
+    total: int,
+    confidence: str,
+    role_hint: str,
+) -> list[str]:
     flags: list[str] = []
+    restart_prompt = _restart_prompt_text(payload)
+    next_best_action = _next_best_action(payload)
+    recommended_paths = _recommended_paths(payload)
+    validation_summary = _validation_summary(payload)
+    artifacts = _as_dict(payload.get("artifacts"))
+
+    if not restart_prompt:
+        flags.append("missing_restart_prompt")
+    elif restart_prompt.endswith("..."):
+        flags.append("prompt_maybe_truncated")
+    if not role_hint or role_hint == "unknown":
+        flags.append("missing_role_hint")
     if total == 0:
         flags.append("no_memory")
     if confidence == "low":
         flags.append("low_confidence")
     if confidence == "unknown":
         flags.append("unknown_confidence")
+    if _is_generic_next_action(next_best_action):
+        flags.append("generic_next_action")
+    if _is_bare_recommended_artifact_heavy(recommended_paths):
+        flags.append("bare_recommended_artifacts")
+    if _is_missing_validation_summary(validation_summary):
+        flags.append("missing_validation_summary")
+    if artifacts.get("repo_clean") is False and not _as_list(
+        artifacts.get("repo_dirty_paths")
+    ):
+        flags.append("dirty_repo_without_paths")
     return flags
+
+
+def _readiness(*, flags: list[str], error: str) -> str:
+    if error:
+        return "error"
+    weak_flags = {
+        "missing_restart_prompt",
+        "missing_role_hint",
+        "no_memory",
+    }
+    review_flags = {
+        "low_confidence",
+        "unknown_confidence",
+        "prompt_maybe_truncated",
+        "generic_next_action",
+        "bare_recommended_artifacts",
+        "missing_validation_summary",
+        "dirty_repo_without_paths",
+    }
+    if any(flag in weak_flags for flag in flags):
+        return "weak"
+    if any(flag in review_flags for flag in flags):
+        return "review"
+    return "ready"
+
+
+def _restart_prompt_text(payload: dict[str, Any]) -> str:
+    return str(_as_dict(payload.get("restart_prompt")).get("text") or "").strip()
+
+
+def _next_best_action(payload: dict[str, Any]) -> str:
+    return str(
+        _as_dict(payload.get("continuation_brief")).get("next_best_action") or ""
+    ).strip()
+
+
+def _recommended_paths(payload: dict[str, Any]) -> list[str]:
+    return [
+        str(path).strip()
+        for path in _as_list(
+            _as_dict(payload.get("changed_artifacts")).get(
+                "recommended_inspection_order"
+            )
+        )
+        if str(path).strip()
+    ]
+
+
+def _validation_summary(payload: dict[str, Any]) -> str:
+    return str(_as_dict(payload.get("resolved_state")).get("validation_summary") or "").strip()
+
+
+def _is_generic_next_action(text: str) -> bool:
+    normalized = " ".join(text.lower().split())
+    if not normalized:
+        return True
+    generic_markers = (
+        "review the handoff artifacts and decide",
+        "continue from the resolution summary",
+        "decide the next concrete implementation or analysis step",
+        "start a fresh local session and continue from this handoff",
+    )
+    return any(marker in normalized for marker in generic_markers)
+
+
+def _is_bare_recommended_artifact_heavy(paths: list[str]) -> bool:
+    if len(paths) < 3:
+        return False
+    bare_count = sum(1 for path in paths if _is_bare_artifact_path(path))
+    return bare_count / len(paths) >= 0.5
+
+
+def _is_bare_artifact_path(path: str) -> bool:
+    cleaned = path.strip().strip("`")
+    if "/" in cleaned or "\\" in cleaned:
+        return False
+    if cleaned.startswith(("-", "$")) or " " in cleaned:
+        return False
+    return "." in cleaned and not cleaned.startswith(".")
+
+
+def _is_missing_validation_summary(text: str) -> bool:
+    if not text:
+        return True
+    return text == "No recent validation signal was detected."
 
 
 def _as_dict(value: Any) -> dict[str, Any]:

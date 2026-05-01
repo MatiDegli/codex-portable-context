@@ -509,6 +509,47 @@ def test_handoff_cli_extracts_structural_context_decisions(
     assert "context_structural_memory" in memory["evidence"][0]
 
 
+def test_handoff_cli_extracts_review_findings_and_risks(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request="Review the bounded recovery slice.",
+        final_answer_after_request=True,
+        final_answer_message=(
+            "**Findings**\n"
+            "- Medium: public docs say one recovery retry, but implementation permits "
+            "arbitrary positive retry counts.\n"
+            "- Medium: malformed recovery state resets the retry counter instead of "
+            "failing closed.\n\n"
+            "**Residual Risks**\n"
+            "- No coverage for corrupt recovery state.\n\n"
+            "**Recommendation**\n"
+            "- Validate retry limits before enabling bounded recovery."
+        ),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    memory = payload["decisions_and_invariants"]
+    all_statements = " ".join(
+        item["statement"]
+        for key in ("decisions", "invariants", "rejected_paths", "open_architecture_questions")
+        for item in memory[key]
+    )
+    assert "public docs say one recovery retry" in all_statements
+    assert "malformed recovery state" in all_statements
+    assert "corrupt recovery state" in all_statements
+    assert "Validate retry limits" in all_statements
+    assert any("review_memory" in item for item in memory["evidence"])
+    assert "Open questions / risks:" in payload["restart_prompt"]["text"]
+    assert "corrupt recovery state" in payload["restart_prompt"]["text"]
+
+
 def build_fixture_mirror(
     tmp_path: Path,
     *,

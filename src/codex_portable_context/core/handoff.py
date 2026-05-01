@@ -1104,6 +1104,7 @@ def _build_decisions_and_invariants(
     ]
     if parsed:
         sources.extend(_structural_memory_sources(parsed))
+        sources.extend(_review_memory_sources(parsed))
         sources.extend(
             ("recent_window", block.text)
             for block in parsed.conversation_entries[-8:]
@@ -1161,6 +1162,114 @@ def _structural_memory_sources(parsed: ParsedSession) -> list[tuple[str, str]]:
                 )
             )
     return sources
+
+
+def _review_memory_sources(parsed: ParsedSession) -> list[tuple[str, str]]:
+    sources: list[tuple[str, str]] = []
+    for block in parsed.conversation_entries[-RECENT_ACTION_LOOKBACK:]:
+        if block.kind not in {"user", "assistant"}:
+            continue
+        candidates = _review_memory_candidates_from_text(block.text)
+        if candidates:
+            sources.append(
+                (
+                    "review_memory",
+                    "\n".join(f"- {candidate}" for candidate in candidates),
+                )
+            )
+    return sources
+
+
+def _review_memory_candidates_from_text(text: str) -> list[str]:
+    if not _has_review_memory_signal(text):
+        return []
+
+    candidates: list[str] = []
+    active_label = ""
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        heading = _review_memory_heading(line)
+        if heading:
+            active_label = heading
+            continue
+
+        if line.startswith("#"):
+            active_label = ""
+            continue
+
+        if not active_label:
+            continue
+
+        list_item = _structural_list_item(line)
+        if not list_item:
+            continue
+
+        candidate = _review_memory_candidate(active_label, list_item)
+        if candidate and _has_memory_signal(candidate):
+            candidates.append(candidate)
+
+    return candidates[:48]
+
+
+def _has_review_memory_signal(text: str) -> bool:
+    lowered = text.lower()
+    if (
+        "continue from a local extractive handoff" in lowered
+        or "first response contract" in lowered
+    ):
+        return False
+    markers = (
+        "findings",
+        "resolved during review",
+        "residual risks",
+        "residual risk",
+        "residual test gaps",
+        "open questions",
+        "recommendation",
+        "recommended next step",
+        "blockers",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _review_memory_heading(line: str) -> str:
+    stripped = line.strip()
+    looks_like_heading = stripped.startswith("#") or (
+        stripped.endswith(":") and not _is_memory_bullet_line(stripped)
+    )
+    if not looks_like_heading and not (
+        stripped.startswith("**") and stripped.endswith("**")
+    ):
+        return ""
+    cleaned = stripped.strip("# ").strip()
+    cleaned = re.sub(r"^\*\*|\*\*$", "", cleaned).strip()
+    cleaned = cleaned.rstrip(":").strip()
+    lowered = cleaned.lower()
+    accepted = (
+        "findings",
+        "resolved during review",
+        "notes",
+        "residual risks",
+        "residual risk",
+        "residual test gaps",
+        "open questions",
+        "recommendation",
+        "recommended next step",
+        "blockers",
+    )
+    if lowered in accepted:
+        return cleaned
+    return ""
+
+
+def _review_memory_candidate(label: str, text: str) -> str:
+    cleaned = text.strip()
+    if not cleaned:
+        return ""
+    return _excerpt_text(f"{label}: {cleaned}", limit=240)
 
 
 def _structural_memory_candidates_from_text(text: str) -> list[str]:
@@ -1438,6 +1547,26 @@ def _has_memory_signal(text: str) -> bool:
         "no polling",
         "no slack truth",
         "fail-closed",
+        "fail closed",
+        "findings",
+        "finding",
+        "residual risk",
+        "residual risks",
+        "residual test gap",
+        "residual test gaps",
+        "open questions",
+        "recommendation",
+        "recommended next step",
+        "blocker",
+        "blockers",
+        "overclaiming",
+        "corrupt",
+        "malformed",
+        "retry",
+        "coverage",
+        "should probably",
+        "public docs",
+        "conflict",
     )
     return any(marker in lowered for marker in markers)
 
@@ -1494,6 +1623,9 @@ def _is_decision(text: str) -> bool:
         "conviene",
         "lo haría",
         "lo haria",
+        "recommendation",
+        "recommended next step",
+        "resolved during review",
     )
     return any(marker in lowered for marker in markers)
 
@@ -1523,6 +1655,7 @@ def _is_invariant(text: str) -> bool:
         "no polling",
         "no slack truth",
         "fail-closed",
+        "fail closed",
         "debe",
         "must",
         "read-only",
@@ -1545,6 +1678,8 @@ def _is_rejected_path(text: str) -> bool:
         "no promover",
         "no mezclar",
         "should not live",
+        "should not",
+        "must not",
         "do not want to depend",
         "not replace it",
         "sin promoción automática",
@@ -1568,6 +1703,22 @@ def _is_open_architecture_question(text: str) -> bool:
         "pendiente",
         "habría que",
         "habria que",
+        "finding",
+        "findings",
+        "residual risk",
+        "residual risks",
+        "residual test gap",
+        "residual test gaps",
+        "open question",
+        "open questions",
+        "blocker",
+        "blockers",
+        "risk",
+        "gap",
+        "missing",
+        "should probably",
+        "corrupt",
+        "malformed",
     )
     return any(marker in lowered for marker in markers)
 
@@ -1635,6 +1786,10 @@ def _build_restart_prompt(
         _as_list(decisions_and_invariants.get("rejected_paths")),
         fallback="none",
     )
+    open_question_lines = _restart_prompt_memory_lines(
+        _as_list(decisions_and_invariants.get("open_architecture_questions")),
+        fallback="none",
+    )
     text_lines = [
         "Continue from a local extractive handoff. Do not treat this as a live provider resume.",
         "Initial operating mode: read-only context retrieval and review only.",
@@ -1688,6 +1843,8 @@ def _build_restart_prompt(
         *invariant_lines,
         "- Rejected paths:",
         *rejected_lines,
+        "- Open questions / risks:",
+        *open_question_lines,
         "",
         "Open loops and risks:",
         f"- Pending validation: {open_loops.get('pending_validation') or 'none'}",
@@ -1712,7 +1869,7 @@ def _build_restart_prompt(
     text = "\n".join(text_lines)
     return {
         "kind": "fresh_session_reentry",
-        "text": _excerpt_text(text, limit=5000),
+        "text": _excerpt_text(text, limit=8000),
     }
 
 

@@ -264,6 +264,73 @@ Acceptance checks:
 - The fastest path to a fresh-session restart is obvious from the CLI and reader.
 - Extension behavior remains a thin wrapper over the Python CLI.
 
+## Phase 5b: Restart Prompt Quality Gates
+
+Move from "prompt exists" to "prompt is good enough to paste without reading the full transcript first".
+
+Add handoff-audit quality gates:
+
+- `missing_restart_prompt`
+- `missing_role_hint`
+- `prompt_maybe_truncated`
+- `no_memory`
+- `low_confidence`
+- `generic_next_action`
+- `bare_recommended_artifacts`
+- `missing_validation_summary`
+- `dirty_repo_without_paths`
+
+Add a readiness classification:
+
+- `ready`: prompt can normally be pasted as-is
+- `review`: prompt is usable but should be checked against the handoff first
+- `weak`: prompt is likely missing important continuity memory
+- `error`: handoff artifact could not be read or parsed
+
+Implementation guidance:
+
+- Keep gates deterministic and explainable.
+- Treat gates as advisory quality signals, not hard failures.
+- Make the JSON report richer than the terminal table.
+- Prefer specific flags over a single opaque score.
+- Use real handoff samples to tune false positives.
+
+Acceptance checks:
+
+- `codex-session-handoff-audit` identifies low-value prompts without opening each handoff.
+- A prompt with missing memory, missing role, or truncated restart text is not marked `ready`.
+- Bare filename-heavy artifact lists are flagged for review.
+
+## Phase 5c: Review and Findings Memory Extraction
+
+Improve continuity for reviewer/audit sessions where durable memory is expressed as findings rather than decisions.
+
+Extract conservative memory from headings such as:
+
+- `Findings`
+- `Resolved during review`
+- `Notes`
+- `Residual Risks`
+- `Residual Test Gaps`
+- `Open Questions`
+- `Recommendation`
+- `Recommended Next Step`
+- `Blockers`
+
+Implementation guidance:
+
+- Prefer bullets and numbered findings under explicit headings.
+- Preserve severity labels such as `Critical`, `High`, `Medium`, and `Low` when present.
+- Route risks, blockers, and residual gaps into open architecture questions or risks.
+- Route recommendations into decisions or next-step candidates.
+- Do not treat every paragraph in a review as durable memory.
+
+Acceptance checks:
+
+- Reviewer sessions preserve actionable findings in the handoff.
+- Residual risks survive into the restart prompt.
+- Findings extraction does not pollute ordinary chat sessions.
+
 ## Phase 6: Provider-Agnostic Continuity Quality
 
 Keep the new bridge fields provider-neutral.

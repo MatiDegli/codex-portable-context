@@ -13,6 +13,8 @@ def test_handoff_audit_cli_reports_memory_coverage(tmp_path: Path, capsys) -> No
 
     assert exit_code == 0
     assert "Audited 2 session(s): 1 with memory, 1 empty, 0 errored." in captured.out
+    assert "Readiness:" in captured.out
+    assert "READY" in captured.out
     assert "Rich Memory Session" in captured.out
     assert "Sparse Session" in captured.out
     assert "no_memory" in captured.out
@@ -31,9 +33,29 @@ def test_handoff_audit_cli_json_reports_counts_and_sources(
     payload = json.loads(captured.out)
     assert payload["summary"]["audited"] == 1
     assert payload["summary"]["covered"] == 1
+    assert payload["summary"]["readiness_counts"]
     assert payload["items"][0]["session_id"] == "session-rich"
+    assert payload["items"][0]["readiness"] in {"ready", "review", "weak"}
+    assert payload["items"][0]["quality_gates"] == payload["items"][0]["flags"]
     assert payload["items"][0]["counts"]["invariants"] >= 1
     assert "context_structural_memory" in payload["items"][0]["sources"]
+
+
+def test_handoff_audit_cli_marks_sparse_prompt_weak(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+
+    exit_code = main(["--out-dir", str(out_dir), "--json", "session-sparse"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    item = payload["items"][0]
+    assert item["readiness"] == "weak"
+    assert "no_memory" in item["flags"]
+    assert "low_confidence" in item["flags"]
 
 
 def test_handoff_audit_cli_can_read_existing_handoffs_without_generating(
