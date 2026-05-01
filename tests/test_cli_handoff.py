@@ -304,8 +304,8 @@ def test_handoff_cli_marks_question_answered_after_final_response(
     assert (
         payload["continuation_brief"]["next_best_action"]
         == (
-            "Start a fresh local session and continue from this handoff's "
-            "Current State and Open Loops."
+            "Inspect `README.md` first, then continue the scoped follow-up from "
+            "the resolved state."
         )
     )
     assert payload["open_loops"]["open_question"] == "none"
@@ -548,6 +548,38 @@ def test_handoff_cli_extracts_review_findings_and_risks(
     assert any("review_memory" in item for item in memory["evidence"])
     assert "Open questions / risks:" in payload["restart_prompt"]["text"]
     assert "corrupt recovery state" in payload["restart_prompt"]["text"]
+    assert payload["continuation_brief"]["next_best_action"].startswith(
+        "Address the leading open risk or question before taking a new "
+        "implementation step: Medium: malformed recovery state"
+    )
+
+
+def test_handoff_cli_uses_review_recommendation_for_next_action(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request="Review descriptor coverage.",
+        final_answer_after_request=True,
+        final_answer_message=(
+            "**Recommendation**\n"
+            "- Validate descriptor coverage before widening retrieval."
+        ),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    assert (
+        payload["continuation_brief"]["next_best_action"]
+        == (
+            "Continue from the captured recommendation: Validate descriptor "
+            "coverage before widening retrieval."
+        )
+    )
 
 
 def build_fixture_mirror(

@@ -562,6 +562,13 @@ def _build_handoff_payload(
         redacted=redacted,
         context=redaction_context,
     )
+    continuation_brief["next_best_action"] = _next_best_action_for_brief(
+        current_state=current_state,
+        resolved_state=resolved_state,
+        open_loops=open_loops,
+        changed_artifacts=changed_artifacts,
+        decisions_and_invariants=decisions_and_invariants,
+    )
     artifacts = {
         "metadata_relpath": str(metadata.get("metadata_relpath") or ""),
         "markdown_relpath": str(metadata.get("markdown_relpath") or ""),
@@ -2095,18 +2102,155 @@ def _next_best_action_for_brief(
     current_state: dict[str, str],
     resolved_state: dict[str, str],
     open_loops: dict[str, str],
+    changed_artifacts: dict[str, Any] | None = None,
+    decisions_and_invariants: dict[str, Any] | None = None,
 ) -> str:
     if open_loops.get("unresolved_failure") != "none":
         return "Inspect the unresolved failure before making further changes."
     expected_next_command = _string(open_loops.get("expected_next_command"))
     if expected_next_command and expected_next_command != "none":
         return f"Run `{expected_next_command}` or resolve why it is still pending."
-    if resolved_state.get("request_resolution_status") == "answered":
+
+    memory_action = _specific_next_action_from_memory(decisions_and_invariants or {})
+    artifact_action = _specific_next_action_from_artifacts(changed_artifacts or {})
+    resolution_status = resolved_state.get("request_resolution_status")
+    if resolution_status in {"answered", "handled_with_changes", "completed"}:
+        if memory_action:
+            return memory_action
+        if artifact_action:
+            return artifact_action
+    if resolution_status == "answered":
         return (
             "Continue from the resolution summary and decide the next concrete "
             "implementation or analysis step."
         )
     return _string(current_state.get("next_recommended_action"))
+
+
+def _specific_next_action_from_memory(decisions_and_invariants: dict[str, Any]) -> str:
+    for item in _as_list(decisions_and_invariants.get("open_architecture_questions")):
+        statement = _memory_statement_for_action(item)
+        if statement:
+            return _excerpt_text(
+                "Address the leading open risk or question before taking a new "
+                f"implementation step: {statement}",
+                limit=320,
+            )
+
+    for item in _as_list(decisions_and_invariants.get("decisions")):
+        statement = _memory_statement_for_action(item)
+        raw_statement = _string(_as_dict(item).get("statement")) or _string(item)
+        lowered = f"{raw_statement} {statement}".lower()
+        if not statement:
+            continue
+        if any(
+            marker in lowered
+            for marker in (
+                "recommendation",
+                "recommended next step",
+                "next step",
+                "siguiente paso",
+                "validate ",
+                "review ",
+                "inspect ",
+                "implement ",
+                "build ",
+                "create ",
+                "harden ",
+                "write ",
+            )
+        ):
+            return _excerpt_text(
+                f"Continue from the captured recommendation: {statement}",
+                limit=320,
+            )
+    return ""
+
+
+def _specific_next_action_from_artifacts(changed_artifacts: dict[str, Any]) -> str:
+    paths = _next_action_artifact_paths(changed_artifacts)
+    if not paths:
+        return ""
+    rendered_paths = _action_path_list(paths[:3])
+    if not rendered_paths:
+        return ""
+    return _excerpt_text(
+        f"Inspect {rendered_paths} first, then continue the scoped follow-up from "
+        "the resolved state.",
+        limit=320,
+    )
+
+
+def _next_action_artifact_paths(changed_artifacts: dict[str, Any]) -> list[str]:
+    key_paths = _as_list(changed_artifacts.get("key_paths"))
+    changed_paths = _as_list(changed_artifacts.get("changed_paths"))
+    preferred_items = [
+        item
+        for item in [*key_paths, *changed_paths]
+        if _as_dict(item).get("source") != "git_status"
+    ]
+    fallback_items = [*key_paths, *changed_paths]
+    paths = _artifact_paths_from_items(preferred_items)
+    if paths:
+        return paths[:3]
+    return _artifact_paths_from_items(fallback_items)[:3]
+
+
+def _artifact_paths_from_items(items: list[Any]) -> list[str]:
+    paths: list[str] = []
+    for raw_item in items:
+        item = _as_dict(raw_item)
+        path = _string(item.get("path"))
+        if not path or path in paths:
+            continue
+        if not _is_recommended_artifact_path(path):
+            continue
+        paths.append(path)
+    return paths
+
+
+def _memory_statement_for_action(item: Any) -> str:
+    memory = _as_dict(item)
+    statement = _string(memory.get("statement")) or _string(item)
+    statement = _strip_action_memory_label(statement)
+    return _excerpt_text(statement, limit=260) if statement else ""
+
+
+def _strip_action_memory_label(statement: str) -> str:
+    cleaned = statement.strip()
+    label, separator, rest = cleaned.partition(":")
+    if not separator:
+        return cleaned
+    accepted_labels = {
+        "findings",
+        "finding",
+        "residual risks",
+        "residual risk",
+        "residual test gaps",
+        "open questions",
+        "open question",
+        "recommendation",
+        "recommended next step",
+        "blockers",
+        "blocker",
+        "known risks",
+        "important caveat",
+    }
+    if label.strip().lower() in accepted_labels and rest.strip():
+        return rest.strip()
+    return cleaned
+
+
+def _action_path_list(paths: list[str]) -> str:
+    cleaned = [path.strip() for path in paths if path.strip()]
+    if not cleaned:
+        return ""
+    rendered = [f"`{path}`" for path in cleaned]
+    if len(rendered) == 1:
+        return rendered[0]
+    if len(rendered) == 2:
+        return f"{rendered[0]} and {rendered[1]}"
+    return f"{', '.join(rendered[:-1])}, and {rendered[-1]}"
 
 
 def _latest_completion_message_after(

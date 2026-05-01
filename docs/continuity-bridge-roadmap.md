@@ -331,6 +331,31 @@ Acceptance checks:
 - Residual risks survive into the restart prompt.
 - Findings extraction does not pollute ordinary chat sessions.
 
+## Phase 5d: Specific Next Action Synthesis
+
+Move `next_best_action` from a generic continuation instruction to a concrete re-entry action.
+
+Inputs, in priority order:
+
+- unresolved failures and expected validation commands
+- open architecture questions, residual risks, and blockers
+- explicit recommendations or recommended next steps
+- conversation/tool-output artifact paths
+- git-status paths as fallback only
+
+Implementation guidance:
+
+- Prefer a specific risk/recommendation over artifact inspection.
+- Prefer conversation and tool-output paths over incidental dirty repo paths.
+- Keep the action short enough to survive inside the restart prompt.
+- Treat generic actions as an audit smell via `generic_next_action`.
+
+Acceptance checks:
+
+- Handoffs with enough memory are not flagged with `generic_next_action`.
+- The action names the leading risk, recommendation, or artifact to inspect first.
+- Unrelated local dirty paths do not displace stronger handoff-specific artifacts.
+
 ## Phase 6: Provider-Agnostic Continuity Quality
 
 Keep the new bridge fields provider-neutral.
