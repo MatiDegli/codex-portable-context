@@ -288,6 +288,7 @@ def render_session_reader(
     entry: dict[str, Any],
     metadata_text: str,
     markdown_text: str,
+    handoff: dict[str, Any] | None = None,
 ) -> str:
     """Render a self-contained HTML reader page for one session."""
 
@@ -301,6 +302,7 @@ def render_session_reader(
     metadata_rel = "../" + str(entry.get("metadata_relpath") or f"metadata/{session_id}.json")
     handoff_markdown_rel = f"../handoffs/{session_id}.md"
     handoff_json_rel = f"../handoffs/{session_id}.json"
+    restart_prompt_html = _restart_prompt_panel(handoff)
 
     metadata_rows = [
         ("Session ID", session_id),
@@ -421,6 +423,45 @@ def render_session_reader(
       color: white;
       text-decoration: none;
       font-weight: 700;
+    }}
+    button {{
+      font: inherit;
+    }}
+    .copy-button {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin: 10px 0 12px;
+      padding: 9px 14px;
+      border: 1px solid var(--accent);
+      border-radius: 999px;
+      background: var(--accent);
+      color: white;
+      cursor: pointer;
+      font-weight: 700;
+    }}
+    .copy-button:focus-visible {{
+      outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent);
+      outline-offset: 2px;
+    }}
+    .copy-status {{
+      display: inline-block;
+      margin-left: 8px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }}
+    .prompt-box {{
+      width: 100%;
+      min-height: 220px;
+      resize: vertical;
+      margin: 0;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+      color: var(--text);
+      background: color-mix(in srgb, var(--panel) 92%, black 8%);
+      font: 0.86rem/1.45 var(--mono);
+      white-space: pre-wrap;
     }}
     .subnav {{
       display: flex;
@@ -563,6 +604,7 @@ def render_session_reader(
           <code>codex-session-handoff {session_id[:8]}</code> or
           <code>codex-session-handoff --latest</code>.
         </p>
+        {restart_prompt_html}
       </aside>
       <section class="panel" id="transcript">
         <h2>Transcript</h2>
@@ -574,6 +616,41 @@ def render_session_reader(
       </section>
     </section>
   </main>
+  <script>
+    (() => {{
+      const button = document.querySelector("[data-copy-restart-prompt]");
+      const prompt = document.getElementById("restart-prompt-text");
+      const status = document.getElementById("restart-prompt-copy-status");
+      if (!button || !prompt || !status) {{
+        return;
+      }}
+
+      const setStatus = (text) => {{
+        status.textContent = text;
+      }};
+
+      const selectPrompt = () => {{
+        prompt.focus();
+        prompt.select();
+        prompt.setSelectionRange(0, prompt.value.length);
+      }};
+
+      button.addEventListener("click", async () => {{
+        selectPrompt();
+        try {{
+          if (navigator.clipboard && window.isSecureContext) {{
+            await navigator.clipboard.writeText(prompt.value);
+            setStatus("Copied");
+            return;
+          }}
+          const copied = document.execCommand && document.execCommand("copy");
+          setStatus(copied ? "Copied" : "Selected");
+        }} catch (error) {{
+          setStatus("Selected");
+        }}
+      }});
+    }})();
+  </script>
 </body>
 </html>
 """
@@ -642,6 +719,28 @@ def _detail_block(label: str, value: str) -> str:
         '<div class="detail">'
         f"<strong>{_escape_text(label)}</strong>"
         f"{_escape_text(value)}"
+        "</div>"
+    )
+
+
+def _restart_prompt_panel(handoff: dict[str, Any] | None) -> str:
+    handoff_dict = handoff if isinstance(handoff, dict) else {}
+    restart_prompt = handoff_dict.get("restart_prompt")
+    restart_prompt_dict = restart_prompt if isinstance(restart_prompt, dict) else {}
+    restart_prompt_text = restart_prompt_dict.get("text")
+    if not isinstance(restart_prompt_text, str) or not restart_prompt_text.strip():
+        return ""
+    return (
+        '<div class="detail">'
+        "<strong>Restart Prompt</strong>"
+        '<button class="copy-button" type="button" data-copy-restart-prompt>'
+        "Copy Restart Prompt"
+        "</button>"
+        '<span class="copy-status" id="restart-prompt-copy-status" '
+        'aria-live="polite"></span>'
+        '<textarea class="prompt-box" id="restart-prompt-text" readonly>'
+        f"{_escape_text(restart_prompt_text)}"
+        "</textarea>"
         "</div>"
     )
 

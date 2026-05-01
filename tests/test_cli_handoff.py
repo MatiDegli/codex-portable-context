@@ -141,6 +141,7 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     )
 
     markdown = (out_dir / "handoffs" / "session-5678.md").read_text(encoding="utf-8")
+    reader = (out_dir / "reader" / "session-5678.html").read_text(encoding="utf-8")
     assert "## Continuation Brief" in markdown
     assert "## Resolved State" in markdown
     assert "## Re-Entry Posture" in markdown
@@ -162,6 +163,9 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     assert "## Open Loops / Risks" in markdown
     assert "Handoff JSON" in markdown
     assert "Recent Tool Activity (audit trail)" in markdown
+    assert "Copy Restart Prompt" in reader
+    assert "restart-prompt-text" in reader
+    assert "Continue from a local extractive handoff." in reader
 
 
 def test_handoff_cli_prints_markdown_path_and_handles_missing_source(

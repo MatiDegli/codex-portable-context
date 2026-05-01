@@ -445,7 +445,7 @@ They currently rely on these fields:
 
 The generated landing page also uses the exported summary fields to show a short preview, activity line, and environment line for each session.
 
-The generated browser reader uses the same summary fields and the optional `reader_relpath` field to build a self-contained static UI.
+The generated browser reader uses the same summary fields and the optional `reader_relpath` field to build a self-contained static UI. After a handoff is generated, the session reader is refreshed with a copy button for the restart prompt.
 
 ## Handoff Bundles
 

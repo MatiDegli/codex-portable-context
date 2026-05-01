@@ -14,6 +14,7 @@ from typing import Any
 from codex_portable_context.providers import get_provider_adapter
 
 from .discovery import mirror_layout
+from .html_reader import render_session_reader
 from .index import MirrorEntry, entry_path
 from .markdown import pretty_timestamp
 from .parsing import ParsedSession, RenderBlock
@@ -45,7 +46,8 @@ def generate_handoff(entry: MirrorEntry, out_dir: Path | None = None) -> Handoff
         entry.get("reader_relpath") or layout.reader_relpath(session_id)
     )
 
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata_text = metadata_path.read_text(encoding="utf-8")
+    metadata = json.loads(metadata_text)
     transcript_text = markdown_path.read_text(encoding="utf-8")
     cwd = _string(metadata.get("cwd"))
 
@@ -67,6 +69,17 @@ def generate_handoff(entry: MirrorEntry, out_dir: Path | None = None) -> Handoff
     )
     handoff_markdown_path.write_text(
         render_handoff_markdown(handoff),
+        encoding="utf-8",
+    )
+    reader_path = layout.reader_path(session_id)
+    reader_path.parent.mkdir(parents=True, exist_ok=True)
+    reader_path.write_text(
+        render_session_reader(
+            entry=metadata,
+            metadata_text=metadata_text,
+            markdown_text=transcript_text,
+            handoff=handoff,
+        ),
         encoding="utf-8",
     )
 

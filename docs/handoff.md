@@ -103,6 +103,8 @@ For the exact minimum cross-device package expected on the destination machine, 
 
 The current continuity bridge layer provides a compact, traceable re-entry brief with resolved state, durable decisions, changed artifacts, re-entry posture, and a copy-ready restart prompt. Remaining improvements are tracked in [Continuity Bridge Roadmap](./continuity-bridge-roadmap.md).
 
+When `codex-session-handoff` runs, it also refreshes the per-session reader HTML with an embedded restart prompt and a copy button. If a browser blocks clipboard writes from a local `file://` page, the prompt text remains selected for manual copy.
+
 ## Usage
 
 Generate a handoff for the latest exported session:
