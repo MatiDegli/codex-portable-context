@@ -404,6 +404,24 @@ Acceptance checks:
 - Substantive sessions without memory remain `weak`.
 - Audit output explains purpose distribution alongside readiness distribution.
 
+## Phase 5g: Restart Prompt Hygiene
+
+Remove noisy or misleading prompt content before testing re-entry behavior.
+
+Implementation guidance:
+
+- Filter terminal/runtime noise such as shell cache logs and progress ratios.
+- Prefer repo-relative artifact paths for files under the detected repo root.
+- Preserve absolute paths only when they point outside the repo and are still meaningful.
+- Avoid artifact-driven next actions for bootstrap, ACK, and transport initialization sessions.
+- Keep `next_best_action` short enough to avoid truncation in restart prompts.
+
+Acceptance checks:
+
+- Bootstrap handoffs do not tell the next session to inspect cache logs.
+- Recommended artifacts inside the repo render as `src/...`, `tests/...`, or docs paths.
+- Restart prompts remain untruncated after hygiene changes.
+
 ## Phase 6: Provider-Agnostic Continuity Quality
 
 Keep the new bridge fields provider-neutral.

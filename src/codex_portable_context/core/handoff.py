@@ -563,6 +563,7 @@ def _build_handoff_payload(
         context=redaction_context,
     )
     continuation_brief["next_best_action"] = _next_best_action_for_brief(
+        session_title=_string(metadata.get("title")),
         current_state=current_state,
         resolved_state=resolved_state,
         open_loops=open_loops,
@@ -863,6 +864,7 @@ def _build_continuation_brief(
         "latest_resolved_request": latest_resolved_request,
         "last_meaningful_outcome": _string(current_state.get("last_meaningful_outcome")),
         "next_best_action": _next_best_action_for_brief(
+            session_title=session_title,
             current_state=current_state,
             resolved_state=resolved_state,
             open_loops=open_loops,
@@ -890,6 +892,7 @@ def _build_changed_artifacts(
 ) -> dict[str, Any]:
     changed_paths: list[dict[str, str]] = []
     key_paths: list[dict[str, str]] = []
+    repo_root = _string(repo_state.get("repo_root"))
 
     if parsed:
         for block in parsed.conversation_entries[-RECENT_ACTION_LOOKBACK:]:
@@ -897,7 +900,7 @@ def _build_changed_artifacts(
                 for path in _updated_files_from_tool_output(block.text):
                     resolved_path = _resolve_artifact_path(
                         path,
-                        repo_root=_string(repo_state.get("repo_root")),
+                        repo_root=repo_root,
                     )
                     _append_artifact(
                         changed_paths,
@@ -933,9 +936,10 @@ def _build_changed_artifacts(
     )
     for text in text_sources:
         for path in _path_mentions_from_text(text):
+            resolved_path = _resolve_artifact_path(path, repo_root=repo_root)
             _append_artifact(
                 key_paths,
-                path=path,
+                path=resolved_path,
                 source="recent_text_path_mention",
                 status="referenced",
                 note="Mentioned in recent request, response, or summary.",
@@ -1010,6 +1014,8 @@ def _normalize_artifact_path(path: str) -> str:
     cleaned = cleaned.rstrip(".,;)")
     if cleaned in {"/", "./", "../"}:
         return ""
+    if _is_noisy_artifact_path(cleaned):
+        return ""
     if not cleaned or cleaned.startswith(("http://", "https://")):
         return ""
     if _looks_like_shell_command_path(cleaned):
@@ -1025,7 +1031,12 @@ def _normalize_artifact_path(path: str) -> str:
 
 def _resolve_artifact_path(path: str, *, repo_root: str) -> str:
     normalized = _normalize_artifact_path(path)
-    if not normalized or "/" in normalized or "\\" in normalized:
+    if not normalized:
+        return normalized
+    repo_relative = _repo_relative_artifact_path(normalized, repo_root=repo_root)
+    if repo_relative:
+        return repo_relative
+    if "/" in normalized or "\\" in normalized:
         return normalized
     if not repo_root or not Path(normalized).suffix:
         return normalized
@@ -1065,6 +1076,34 @@ def _repo_filename_matches(root: Path, filename: str) -> list[Path]:
         if len(matches) >= 25:
             break
     return matches
+
+
+def _repo_relative_artifact_path(path: str, *, repo_root: str) -> str:
+    if not repo_root:
+        return ""
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        return ""
+    root = Path(repo_root).expanduser()
+    try:
+        relative = candidate.resolve(strict=False).relative_to(
+            root.resolve(strict=False)
+        )
+    except (OSError, ValueError):
+        return ""
+    rendered = relative.as_posix()
+    return "" if rendered == "." else rendered
+
+
+def _is_noisy_artifact_path(path: str) -> bool:
+    normalized = path.strip().replace("\\", "/")
+    if re.fullmatch(r"\d+/\d+", normalized):
+        return True
+    if "/.cache/starship/" in normalized or normalized.startswith(".cache/starship/"):
+        return True
+    if "/.cache/" in normalized and re.search(r"/session_\d+\.log$", normalized):
+        return True
+    return False
 
 
 def _looks_like_shell_command_path(path: str) -> bool:
@@ -1121,6 +1160,8 @@ def _is_bare_artifact_path(path: str) -> bool:
 def _is_recommended_artifact_path(path: str) -> bool:
     normalized = path.strip().replace("\\", "/")
     if not normalized:
+        return False
+    if _is_noisy_artifact_path(normalized):
         return False
     if normalized in {".codex", ".agent-bridge", ".agent-bridge/", "workflow", "workflow/"}:
         return False
@@ -2173,6 +2214,7 @@ def _normalize_for_matching(text: str) -> str:
 
 def _next_best_action_for_brief(
     *,
+    session_title: str = "",
     current_state: dict[str, str],
     resolved_state: dict[str, str],
     open_loops: dict[str, str],
@@ -2184,6 +2226,14 @@ def _next_best_action_for_brief(
     expected_next_command = _string(open_loops.get("expected_next_command"))
     if expected_next_command and expected_next_command != "none":
         return f"Run `{expected_next_command}` or resolve why it is still pending."
+
+    minimal_action = _minimal_reentry_action(
+        session_title=session_title,
+        current_state=current_state,
+        resolved_state=resolved_state,
+    )
+    if minimal_action:
+        return minimal_action
 
     memory_action = _specific_next_action_from_memory(decisions_and_invariants or {})
     artifact_action = _specific_next_action_from_artifacts(changed_artifacts or {})
@@ -2199,6 +2249,61 @@ def _next_best_action_for_brief(
             "implementation or analysis step."
         )
     return _string(current_state.get("next_recommended_action"))
+
+
+def _minimal_reentry_action(
+    *,
+    session_title: str,
+    current_state: dict[str, str],
+    resolved_state: dict[str, str],
+) -> str:
+    haystack = " ".join(
+        (
+            session_title,
+            _string(current_state.get("current_focus")),
+            _string(current_state.get("last_meaningful_outcome")),
+            _string(resolved_state.get("latest_user_request")),
+            _string(resolved_state.get("contextual_user_request")),
+            _string(resolved_state.get("resolution_summary")),
+        )
+    ).lower()
+    if _looks_like_bootstrap_or_ack_request(haystack):
+        return (
+            "This was a bootstrap/ACK session; no substantive continuation is "
+            "expected unless the user asks for follow-up work."
+        )
+    if _looks_like_transport_initialization_request(haystack):
+        return (
+            "This was a transport initialization or smoke-test session; continue "
+            "only if the user asks for a concrete follow-up."
+        )
+    return ""
+
+
+def _looks_like_bootstrap_or_ack_request(text: str) -> bool:
+    markers = (
+        "bootstrap",
+        "acknowledge readiness",
+        "reply exactly",
+        "respond exactly",
+        "readiness for dispatch",
+        "bootstrap_ok",
+        "_bootstrap_ok",
+    )
+    return any(marker in text for marker in markers)
+
+
+def _looks_like_transport_initialization_request(text: str) -> bool:
+    markers = (
+        "transport test",
+        "bounded agent-bridge",
+        "agent-bridge turn",
+        "app server thread",
+        "sync-bound-thread",
+        "handshake",
+        "smoke test",
+    )
+    return any(marker in text for marker in markers)
 
 
 def _specific_next_action_from_memory(decisions_and_invariants: dict[str, Any]) -> str:

@@ -362,7 +362,9 @@ def test_handoff_cli_resolves_bare_updated_files_from_repo_root(
         final_answer_after_request=True,
         final_answer_message=(
             "Updated the handoff artifact parser and tests.\n\n"
-            f"Changed file: [handoff.py]({linked_handoff_path}:10)."
+            f"Changed file: [handoff.py]({linked_handoff_path}:10).\n"
+            "Ignore noisy terminal artifacts like "
+            "`/home/matidegli/.cache/starship/session_123456.log` and `48/48`."
         ),
         tool_updated_files=("handoff.py", "test_cli_handoff.py"),
     )
@@ -380,10 +382,10 @@ def test_handoff_cli_resolves_bare_updated_files_from_repo_root(
     recommended = payload["changed_artifacts"]["recommended_inspection_order"]
     assert "handoff.py" in changed
     assert "tests/test_cli_handoff.py" in changed
-    assert any(
-        path.endswith("src/codex_portable_context/core/handoff.py")
-        for path in recommended
-    )
+    assert "src/codex_portable_context/core/handoff.py" in recommended
+    assert not any(str(repo_root()) in path for path in recommended)
+    assert not any("starship" in path for path in recommended)
+    assert "48/48" not in recommended
     assert "handoff.py" not in recommended
     assert "/" not in recommended
 
@@ -616,6 +618,33 @@ def test_handoff_cli_uses_review_recommendation_for_next_action(
             "coverage before widening retrieval."
         )
     )
+
+
+def test_handoff_cli_bootstrap_prompt_avoids_artifact_next_action(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request=(
+            "Reviewer bootstrap for Workstation dogfood. Reply exactly: "
+            "WORKSTATION_REVIEWER_BOOTSTRAP_OK"
+        ),
+        final_answer_after_request=True,
+        final_answer_message="WORKSTATION_REVIEWER_BOOTSTRAP_OK",
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    next_action = payload["continuation_brief"]["next_best_action"]
+    assert next_action == (
+        "This was a bootstrap/ACK session; no substantive continuation is "
+        "expected unless the user asks for follow-up work."
+    )
+    assert not next_action.startswith("Inspect ")
 
 
 def build_fixture_mirror(
