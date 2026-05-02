@@ -14,6 +14,7 @@ def test_handoff_audit_cli_reports_memory_coverage(tmp_path: Path, capsys) -> No
     assert exit_code == 0
     assert "Audited 2 session(s): 1 with memory, 1 empty, 0 errored." in captured.out
     assert "Readiness:" in captured.out
+    assert "Source contract: pass=2, review=0, fail=0, error=0." in captured.out
     assert "Purpose:" in captured.out
     assert "READY" in captured.out
     assert "PURPOSE" in captured.out
@@ -44,7 +45,12 @@ def test_handoff_audit_cli_json_reports_counts_and_sources(
     assert payload["items"][0]["counts"]["invariants"] >= 1
     assert "context_structural_memory" in payload["items"][0]["sources"]
     assert payload["items"][0]["prompt_compliance"]["status"] == "pass"
+    assert payload["items"][0]["source_contract_compliance"]["status"] == "pass"
+    assert payload["items"][0]["source_contract_compliance"]["checks"][
+        "section_sources_complete"
+    ] is True
     assert payload["summary"]["prompt_compliance_counts"]["pass"] == 1
+    assert payload["summary"]["source_contract_counts"]["pass"] == 1
 
 
 def test_handoff_audit_cli_marks_sparse_prompt_minimal_expected(
@@ -207,6 +213,7 @@ def test_handoff_audit_cli_writes_manual_e2e_manifest(
     assert manifest["safety"]["sends_messages"] is False
     assert manifest["summary"]["cases"] == 1
     assert manifest["summary"]["prompt_compliance_counts"]["pass"] == 1
+    assert manifest["summary"]["source_contract_counts"]["pass"] == 1
     assert manifest["manual_run_summary"] == {
         "status": "not_run",
         "cases_total": 1,
@@ -232,6 +239,7 @@ def test_handoff_audit_cli_writes_manual_e2e_manifest(
     case = manifest["cases"][0]
     assert case["session_id"] == "session-rich"
     assert case["prompt_compliance_status"] == "pass"
+    assert case["source_contract_status"] == "pass"
     assert "Continue from a local extractive handoff." in case["restart_prompt"]
     assert case["expected_first_response"]["must_not_use_tools_or_commands"] is True
     assert case["expected_first_response"]["mode_choices"] == [
@@ -259,6 +267,32 @@ def test_handoff_audit_cli_can_read_existing_handoffs_without_generating(
 
     assert exit_code == 0
     assert "Audited 1 session(s): 1 with memory, 0 empty, 0 errored." in captured.out
+
+
+def test_handoff_audit_cli_flags_broken_source_contract(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+    assert main(["--out-dir", str(out_dir), "session-rich"]) == 0
+    capsys.readouterr()
+    handoff_json = out_dir / "handoffs" / "session-rich.json"
+    mutate_handoff(
+        handoff_json,
+        lambda payload: payload["source_availability"].pop("section_sources"),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--no-generate", "--json", "session-rich"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    item = payload["items"][0]
+    assert item["source_contract_compliance"]["status"] == "fail"
+    assert "source_contract_missing_required_fields" in item["flags"]
+    assert "source_contract_section_consistency" in item["flags"]
+    assert item["readiness"] == "weak"
+    assert payload["summary"]["source_contract_counts"]["fail"] == 1
 
 
 def test_handoff_audit_cli_rejects_negative_limit(tmp_path: Path, capsys) -> None:
@@ -436,6 +470,12 @@ def write_session(
 def mutate_restart_prompt(path: Path, mutator) -> None:
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["restart_prompt"]["text"] = mutator(payload["restart_prompt"]["text"])
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def mutate_handoff(path: Path, mutator) -> None:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    mutator(payload)
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 

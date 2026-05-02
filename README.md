@@ -235,6 +235,9 @@ codex-session-handoff-audit 019cef3a --json
 codex-session-handoff-audit --write-e2e-manifest ./out/restart-prompt-e2e.json 019cef3a
 ```
 
+The handoff audit reports memory quality, restart-prompt compliance, and the
+provider-neutral `source_availability` contract used by continuity handoffs.
+
 Both `codex-session-open --help` and `codex-session-latest --help` now include short built-in examples so the common open/print flows are easier to discover from the terminal.
 
 `codex-session-mirror --help`, `codex-session-list --help`, and `codex-session-handoff-audit --help` now follow the same pattern, so the helper commands present examples in a consistent style.

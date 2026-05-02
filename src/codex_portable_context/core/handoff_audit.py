@@ -8,7 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from .discovery import mirror_layout
-from .handoff import generate_handoff
+from .handoff import (
+    PROVIDER_CAPABILITY_KEYS,
+    SECTION_SOURCE_VALUES,
+    SOURCE_MODE_VALUES,
+    SOURCE_SECTION_KEYS,
+    generate_handoff,
+)
 from .index import MirrorEntry, entry_session_id, entry_title, sort_entries
 from .listing import truncate
 from .resolve import resolve_unique_entry
@@ -32,6 +38,7 @@ E2E_OBSERVED_FIELDS = (
     "listed_modes",
     "asked_for_confirmation",
 )
+SOURCE_CONTRACT_STATUS_VALUES = ("pass", "review", "fail", "error")
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +110,15 @@ def render_handoff_audit(report: dict[str, Any]) -> str:
             review=summary.get("prompt_compliance_counts", {}).get("review", 0),
             fail=summary.get("prompt_compliance_counts", {}).get("fail", 0),
             error=summary.get("prompt_compliance_counts", {}).get("error", 0),
+        ),
+        (
+            "Source contract: pass={passed}, review={review}, fail={fail}, "
+            "error={error}."
+        ).format(
+            passed=summary.get("source_contract_counts", {}).get("pass", 0),
+            review=summary.get("source_contract_counts", {}).get("review", 0),
+            fail=summary.get("source_contract_counts", {}).get("fail", 0),
+            error=summary.get("source_contract_counts", {}).get("error", 0),
         ),
         (
             "Purpose: substantive={substantive}, review={review}, active={active}, "
@@ -186,6 +202,9 @@ def build_e2e_manifest(report: dict[str, Any]) -> dict[str, Any]:
             "readiness_counts": _as_dict(_as_dict(report.get("summary")).get("readiness_counts")),
             "prompt_compliance_counts": _as_dict(
                 _as_dict(report.get("summary")).get("prompt_compliance_counts")
+            ),
+            "source_contract_counts": _as_dict(
+                _as_dict(report.get("summary")).get("source_contract_counts")
             ),
         },
         "manual_run_summary": _e2e_run_summary_template(len(items)),
@@ -272,12 +291,14 @@ def _audit_entry(entry: MirrorEntry, *, out_dir: Path, generate: bool) -> dict[s
     role_hint = str(_as_dict(payload.get("reentry_posture")).get("role_hint") or "unknown")
     purpose = _session_purpose(payload=payload, title=entry_title(entry), total=total)
     prompt_compliance = _prompt_compliance(_restart_prompt_text(payload))
+    source_contract_compliance = _source_contract_compliance(payload)
     flags = _quality_flags(
         payload=payload,
         total=total,
         confidence=confidence,
         role_hint=role_hint,
         prompt_compliance=prompt_compliance,
+        source_contract_compliance=source_contract_compliance,
     )
     readiness = _readiness(flags=flags, error="", purpose=purpose)
 
@@ -294,6 +315,7 @@ def _audit_entry(entry: MirrorEntry, *, out_dir: Path, generate: bool) -> dict[s
         "role_hint": role_hint,
         "sources": sources,
         "prompt_compliance": prompt_compliance,
+        "source_contract_compliance": source_contract_compliance,
         "flags": flags,
         "quality_gates": flags,
         "readiness": readiness,
@@ -317,6 +339,7 @@ def _error_item(
         "role_hint": "unknown",
         "sources": [],
         "prompt_compliance": _error_prompt_compliance(),
+        "source_contract_compliance": _error_source_contract_compliance(),
         "flags": flags,
         "quality_gates": flags,
         "readiness": "error",
@@ -326,12 +349,14 @@ def _error_item(
 
 def _e2e_manifest_case(item: dict[str, Any]) -> dict[str, Any]:
     prompt_compliance = _as_dict(item.get("prompt_compliance"))
+    source_contract = _as_dict(item.get("source_contract_compliance"))
     return {
         "session_id": str(item.get("session_id") or ""),
         "title": str(item.get("title") or ""),
         "session_purpose": str(item.get("session_purpose") or "unknown"),
         "readiness": str(item.get("readiness") or "error"),
         "prompt_compliance_status": str(prompt_compliance.get("status") or "error"),
+        "source_contract_status": str(source_contract.get("status") or "error"),
         "handoff_json_path": str(item.get("handoff_json_path") or ""),
         "handoff_markdown_path": str(item.get("handoff_markdown_path") or ""),
         "restart_prompt": _restart_prompt_from_item(item),
@@ -418,6 +443,10 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         "unknown": 0,
     }
     prompt_compliance_counts = {"pass": 0, "review": 0, "fail": 0, "error": 0}
+    source_contract_counts = {
+        status: 0
+        for status in SOURCE_CONTRACT_STATUS_VALUES
+    }
     total_memory = 0
     covered = 0
     errored = 0
@@ -434,6 +463,12 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         )
         prompt_compliance_counts[
             prompt_status if prompt_status in prompt_compliance_counts else "error"
+        ] += 1
+        source_status = str(
+            _as_dict(item.get("source_contract_compliance")).get("status") or "error"
+        )
+        source_contract_counts[
+            source_status if source_status in source_contract_counts else "error"
         ] += 1
         total = int(item.get("total_memory_items") or 0)
         total_memory += total
@@ -454,6 +489,7 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         "readiness_counts": readiness_counts,
         "purpose_counts": purpose_counts,
         "prompt_compliance_counts": prompt_compliance_counts,
+        "source_contract_counts": source_contract_counts,
     }
 
 
@@ -475,6 +511,7 @@ def _quality_flags(
     confidence: str,
     role_hint: str,
     prompt_compliance: dict[str, Any],
+    source_contract_compliance: dict[str, Any],
 ) -> list[str]:
     flags: list[str] = []
     restart_prompt = _restart_prompt_text(payload)
@@ -506,6 +543,7 @@ def _quality_flags(
     ):
         flags.append("dirty_repo_without_paths")
     flags.extend(str(flag) for flag in _as_list(prompt_compliance.get("flags")))
+    flags.extend(str(flag) for flag in _as_list(source_contract_compliance.get("flags")))
     return flags
 
 
@@ -521,6 +559,12 @@ def _readiness(*, flags: list[str], error: str, purpose: str) -> str:
         "prompt_missing_first_response_contract",
         "prompt_missing_confirmation_gate",
         "prompt_unsafe_first_action",
+        "source_contract_missing_availability",
+        "source_contract_missing_required_fields",
+        "source_contract_invalid_types",
+        "source_contract_invalid_values",
+        "source_contract_provider_mismatch",
+        "source_contract_section_consistency",
     }
     if purpose == "active_in_progress":
         active_hard_flags = {
@@ -543,6 +587,7 @@ def _readiness(*, flags: list[str], error: str, purpose: str) -> str:
         "prompt_missing_required_first_response_format",
         "prompt_missing_first_turn_tool_ban",
         "prompt_first_action_missing_confirmation_wait",
+        "source_contract_missing_optional_fields",
     }
     if any(flag in weak_flags for flag in flags):
         return "weak"
@@ -659,6 +704,165 @@ def _is_minimal_expected(*, purpose: str, flags: list[str]) -> bool:
         "bare_recommended_artifacts",
     }
     return all(flag in tolerated_flags for flag in flags)
+
+
+def _source_contract_compliance(payload: dict[str, Any]) -> dict[str, Any]:
+    source = _as_dict(payload.get("source_availability"))
+    if not source:
+        return {
+            "status": "fail",
+            "checks": {"has_source_availability": False},
+            "flags": ["source_contract_missing_availability"],
+        }
+
+    provider = source.get("provider")
+    handoff_provider = payload.get("provider")
+    capabilities = source.get("capabilities")
+    section_source_values = source.get("section_source_values")
+    section_sources = source.get("section_sources")
+    available_sections = source.get("available_sections")
+    checks = {
+        "has_source_availability": True,
+        "provider_present": isinstance(provider, str) and bool(provider.strip()),
+        "provider_matches_handoff": (
+            not handoff_provider
+            or not provider
+            or str(provider) == str(handoff_provider)
+        ),
+        "mode_valid": source.get("mode") in SOURCE_MODE_VALUES,
+        "mode_matches_available": _source_mode_matches_available(source),
+        "available_is_bool": isinstance(source.get("available"), bool),
+        "exact_recent_window_is_bool": isinstance(source.get("exact_recent_window"), bool),
+        "capabilities_complete": _bool_map_has_keys(
+            capabilities,
+            keys=PROVIDER_CAPABILITY_KEYS,
+        ),
+        "section_source_values_complete": _contains_all_strings(
+            section_source_values,
+            values=SECTION_SOURCE_VALUES,
+        ),
+        "section_sources_complete": _string_map_has_keys(
+            section_sources,
+            keys=SOURCE_SECTION_KEYS,
+        ),
+        "section_sources_valid": _section_sources_are_valid(section_sources),
+        "available_sections_complete": _bool_map_has_keys(
+            available_sections,
+            keys=SOURCE_SECTION_KEYS,
+        ),
+        "available_sections_consistent": _available_sections_are_consistent(
+            section_sources=section_sources,
+            available_sections=available_sections,
+        ),
+        "limitations_is_list": isinstance(source.get("limitations"), list),
+        "note_present": isinstance(source.get("note"), str) and bool(source.get("note")),
+    }
+    flags = _source_contract_flags(checks)
+    return {
+        "status": _source_contract_status(flags),
+        "checks": checks,
+        "flags": flags,
+    }
+
+
+def _error_source_contract_compliance() -> dict[str, Any]:
+    return {
+        "status": "error",
+        "checks": {},
+        "flags": [],
+    }
+
+
+def _source_contract_flags(checks: dict[str, bool]) -> list[str]:
+    flags: list[str] = []
+    if not checks.get("provider_present") or not checks.get("note_present"):
+        flags.append("source_contract_missing_required_fields")
+    if not checks.get("provider_matches_handoff"):
+        flags.append("source_contract_provider_mismatch")
+    if not (
+        checks.get("available_is_bool")
+        and checks.get("exact_recent_window_is_bool")
+        and checks.get("limitations_is_list")
+    ):
+        flags.append("source_contract_invalid_types")
+    if not (
+        checks.get("mode_valid")
+        and checks.get("mode_matches_available")
+        and checks.get("section_source_values_complete")
+        and checks.get("section_sources_valid")
+    ):
+        flags.append("source_contract_invalid_values")
+    if not (
+        checks.get("capabilities_complete")
+        and checks.get("section_sources_complete")
+        and checks.get("available_sections_complete")
+    ):
+        flags.append("source_contract_missing_required_fields")
+    if not checks.get("available_sections_consistent"):
+        flags.append("source_contract_section_consistency")
+    return _dedupe(flags)
+
+
+def _source_contract_status(flags: list[str]) -> str:
+    if not flags:
+        return "pass"
+    review_flags = {"source_contract_missing_optional_fields"}
+    if all(flag in review_flags for flag in flags):
+        return "review"
+    return "fail"
+
+
+def _source_mode_matches_available(source: dict[str, Any]) -> bool:
+    mode = source.get("mode")
+    available = source.get("available")
+    if mode not in SOURCE_MODE_VALUES or not isinstance(available, bool):
+        return False
+    expected_mode = SOURCE_MODE_VALUES[0] if available else SOURCE_MODE_VALUES[1]
+    return mode == expected_mode
+
+
+def _bool_map_has_keys(value: Any, *, keys: tuple[str, ...]) -> bool:
+    item = _as_dict(value)
+    return bool(item) and all(isinstance(item.get(key), bool) for key in keys)
+
+
+def _string_map_has_keys(value: Any, *, keys: tuple[str, ...]) -> bool:
+    item = _as_dict(value)
+    return bool(item) and all(isinstance(item.get(key), str) for key in keys)
+
+
+def _contains_all_strings(value: Any, *, values: tuple[str, ...]) -> bool:
+    items = value if isinstance(value, list) else []
+    strings = {item for item in items if isinstance(item, str)}
+    return set(values).issubset(strings)
+
+
+def _section_sources_are_valid(value: Any) -> bool:
+    section_sources = _as_dict(value)
+    if not section_sources:
+        return False
+    valid_values = set(SECTION_SOURCE_VALUES)
+    return all(source in valid_values for source in section_sources.values())
+
+
+def _available_sections_are_consistent(
+    *,
+    section_sources: Any,
+    available_sections: Any,
+) -> bool:
+    source_map = _as_dict(section_sources)
+    available_map = _as_dict(available_sections)
+    if not source_map or not available_map:
+        return False
+    for key in SOURCE_SECTION_KEYS:
+        source = source_map.get(key)
+        available = available_map.get(key)
+        if not isinstance(source, str) or not isinstance(available, bool):
+            return False
+        expected = source not in {"unavailable", "not_supported"}
+        if available is not expected:
+            return False
+    return True
 
 
 def _prompt_compliance(restart_prompt: str) -> dict[str, Any]:
@@ -867,3 +1071,14 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 def _as_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def _dedupe(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        deduped.append(item)
+        seen.add(item)
+    return deduped

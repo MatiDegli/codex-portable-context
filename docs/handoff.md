@@ -137,7 +137,12 @@ Audit recent handoff memory quality:
 codex-session-handoff-audit --out-dir ./out --limit 20
 ```
 
-The audit command regenerates selected handoffs by default, then reports whether `Decisions / Invariants` has useful memory, which sources contributed, and which sessions are `no_memory` or `low_confidence`. Use `--no-generate` to inspect existing handoff JSON files only, or `--json` for machine-readable output.
+The audit command regenerates selected handoffs by default, then reports whether
+`Decisions / Invariants` has useful memory, whether restart prompts comply with
+the first-response contract, whether `source_availability` preserves the
+provider-neutral section contract, which sources contributed, and which sessions
+are `no_memory` or `low_confidence`. Use `--no-generate` to inspect existing
+handoff JSON files only, or `--json` for machine-readable output.
 
 Generate a manual-only restart prompt E2E manifest:
 

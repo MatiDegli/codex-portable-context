@@ -30,6 +30,25 @@ PROVIDER_CAPABILITY_KEYS = (
     "supports_redaction_source_context",
     "supports_latest_selection",
 )
+SOURCE_MODE_VALUES = (
+    "local_source_session",
+    "derived_mirror_only",
+)
+SOURCE_SECTION_KEYS = (
+    "session",
+    "continuation_brief",
+    "resolved_state",
+    "current_state",
+    "changed_artifacts",
+    "decisions_and_invariants",
+    "reentry_posture",
+    "restart_prompt",
+    "recent_window",
+    "recent_notable_events",
+    "recent_tool_activity",
+    "compaction_summaries",
+    "linked_child_sessions",
+)
 SECTION_SOURCE_VALUES = (
     "source_backed",
     "derived_mirror",
@@ -711,7 +730,7 @@ def _build_source_availability(
     source_relpath = _string(metadata.get("source_relpath"))
     source_available = parsed is not None
     exact_recent_window = source_available
-    source_mode = "local_source_session" if source_available else "derived_mirror_only"
+    source_mode = SOURCE_MODE_VALUES[0] if source_available else SOURCE_MODE_VALUES[1]
     limitations = _source_limitations(
         source_available=source_available,
         source_file=source_file,

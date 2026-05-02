@@ -540,6 +540,8 @@ Current slice:
   unavailable instead of inventing data.
 - Missing raw source files degrade to `derived_mirror_only` with stable section
   booleans and limitations.
+- `codex-session-handoff-audit` now reports source-contract compliance counts
+  and flags handoff JSON that drops or corrupts provider-neutral section fields.
 
 Keep the new bridge fields provider-neutral.
 
@@ -555,6 +557,8 @@ Acceptance checks:
 - Consumers can read the same JSON keys across providers.
 - Provider-specific extraction remains behind adapters.
 - The handoff remains useful when only derived mirror data exists, even if less rich.
+- Handoff audit reports `source_contract_counts` and fails malformed
+  `source_availability` contracts.
 
 ## Validation Strategy
 
