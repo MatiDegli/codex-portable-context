@@ -209,7 +209,7 @@ These commands operate only on the derived mirror, never on raw `~/.codex`.
 - `codex-session-handoff`
   Useful flags: `--latest`, `--print`, `--restart-prompt`, `--out-dir`
 - `codex-session-handoff-audit`
-  Useful flags: `--limit`, `--json`, `--no-generate`, `--out-dir`
+  Useful flags: `--limit`, `--json`, `--no-generate`, `--write-e2e-manifest`, `--out-dir`
 
 Examples:
 
@@ -232,6 +232,7 @@ codex-session-handoff 019cef3a --print
 codex-session-handoff 019cef3a --restart-prompt
 codex-session-handoff-audit --limit 20
 codex-session-handoff-audit 019cef3a --json
+codex-session-handoff-audit --write-e2e-manifest ./out/restart-prompt-e2e.json 019cef3a
 ```
 
 Both `codex-session-open --help` and `codex-session-latest --help` now include short built-in examples so the common open/print flows are easier to discover from the terminal.

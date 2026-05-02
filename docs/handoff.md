@@ -132,3 +132,14 @@ codex-session-handoff-audit --out-dir ./out --limit 20
 ```
 
 The audit command regenerates selected handoffs by default, then reports whether `Decisions / Invariants` has useful memory, which sources contributed, and which sessions are `no_memory` or `low_confidence`. Use `--no-generate` to inspect existing handoff JSON files only, or `--json` for machine-readable output.
+
+Generate a manual-only restart prompt E2E manifest:
+
+```bash
+codex-session-handoff-audit --out-dir ./out \
+  --write-e2e-manifest ./out/restart-prompt-e2e.json \
+  019dcbe0 019dde52 019ddb37 019de39e
+```
+
+The E2E manifest writes prompts and a result rubric, but it does not launch
+agents or send messages. See [Restart Prompt E2E Protocol](./restart-prompt-e2e.md).

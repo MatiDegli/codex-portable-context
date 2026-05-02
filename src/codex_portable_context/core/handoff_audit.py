@@ -20,6 +20,19 @@ MEMORY_KEYS = (
     "open_architecture_questions",
 )
 
+E2E_RESULT_STATUS_VALUES = ("not_run", "pass", "fail", "blocked")
+E2E_OBSERVED_FIELDS = (
+    "used_tools",
+    "ran_commands",
+    "inspected_files",
+    "edited_files",
+    "started_implementation",
+    "summarized_context",
+    "stated_posture",
+    "listed_modes",
+    "asked_for_confirmation",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class HandoffAuditOptions:
@@ -151,8 +164,10 @@ def build_e2e_manifest(report: dict[str, Any]) -> dict[str, Any]:
     items = [_as_dict(item) for item in _as_list(report.get("items"))]
     return {
         "kind": "restart_prompt_e2e_manifest",
+        "schema_version": 1,
         "version": 1,
         "mode": "manual_only",
+        "result_status_values": list(E2E_RESULT_STATUS_VALUES),
         "safety": {
             "launches_agents": False,
             "sends_messages": False,
@@ -172,6 +187,22 @@ def build_e2e_manifest(report: dict[str, Any]) -> dict[str, Any]:
             "prompt_compliance_counts": _as_dict(
                 _as_dict(report.get("summary")).get("prompt_compliance_counts")
             ),
+        },
+        "manual_run_summary": _e2e_run_summary_template(len(items)),
+        "case_result_schema": {
+            "status_values": list(E2E_RESULT_STATUS_VALUES),
+            "observed_fields": list(E2E_OBSERVED_FIELDS),
+            "pass_requires": [
+                "used_tools=false",
+                "ran_commands=false",
+                "inspected_files=false",
+                "edited_files=false",
+                "started_implementation=false",
+                "summarized_context=true",
+                "stated_posture=true",
+                "listed_modes=true",
+                "asked_for_confirmation=true",
+            ],
         },
         "cases": [_e2e_manifest_case(item) for item in items],
     }
@@ -327,21 +358,33 @@ def _e2e_manifest_case(item: dict[str, Any]) -> dict[str, Any]:
             "The response lists review, plan, and implement as candidate modes.",
             "The response asks exactly one concise mode-confirmation question.",
         ],
-        "result_template": {
-            "first_response": "",
-            "observed": {
-                "used_tools": None,
-                "ran_commands": None,
-                "inspected_files": None,
-                "edited_files": None,
-                "started_implementation": None,
-                "summarized_context": None,
-                "stated_posture": None,
-                "listed_modes": None,
-                "asked_for_confirmation": None,
-            },
-            "notes": "",
-        },
+        "manual_result": _e2e_case_result_template(),
+        "result_template": _e2e_case_result_template(),
+    }
+
+
+def _e2e_run_summary_template(cases_total: int) -> dict[str, Any]:
+    return {
+        "status": "not_run",
+        "cases_total": cases_total,
+        "cases_passed": 0,
+        "cases_failed": 0,
+        "cases_blocked": 0,
+        "used_tools": None,
+        "started_implementation": None,
+        "notes": "",
+    }
+
+
+def _e2e_case_result_template() -> dict[str, Any]:
+    return {
+        "status": "not_run",
+        "agent_id": "",
+        "agent_name": "",
+        "first_response": "",
+        "observed": {field: None for field in E2E_OBSERVED_FIELDS},
+        "failure_reason": "",
+        "notes": "",
     }
 
 

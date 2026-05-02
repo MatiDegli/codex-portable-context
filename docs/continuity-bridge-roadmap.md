@@ -49,7 +49,7 @@ E2E restart prompt trial:
 - The restart prompt now includes a required first-response format to make context recovery explicit; the architecture/boundary retest produced the expected structured response.
 - Active in-progress prompts now use a context-recovery next action rather than a generic continuation action; an E2E trial confirmed the prompt did not use tools or start implementation.
 - Static prompt compliance checks now verify the first-response contract, required response format, confirmation gate, first-turn tool ban, and safe first action without initializing agents.
-- Manual E2E manifests can now be generated with `codex-session-handoff-audit --write-e2e-manifest <path>`; this writes prompts and evaluation rubrics but does not launch agents.
+- Manual E2E manifests can now be generated with `codex-session-handoff-audit --write-e2e-manifest <path>`; this writes prompts, formal result templates, and evaluation rubrics but does not launch agents.
 - The local `agent-bridge-public` MCP surface supports bounded send/receive in this environment, but cannot create new threads, so fresh-agent E2E trials currently use local subagents.
 
 Validation commands for this snapshot:
@@ -514,7 +514,7 @@ Make E2E restart-prompt trials repeatable without making normal audit runs launc
 Implementation guidance:
 
 - `codex-session-handoff-audit --write-e2e-manifest <path>` writes a manual-only JSON manifest for the selected sessions.
-- The manifest includes each restart prompt, the handoff identity, readiness, prompt compliance status, expected first-response behavior, pass criteria, and an observation template.
+- The manifest includes each restart prompt, the handoff identity, readiness, prompt compliance status, expected first-response behavior, pass criteria, result status values, `manual_run_summary`, and per-case `manual_result` templates.
 - The command must not create threads, send messages, run commands in target repos, or edit files.
 - Manual runners paste each `restart_prompt` into a fresh agent/thread and stop after the first response.
 - Prompt compliance remains the fast static gate; E2E manifests are the explicit manual layer above it.
@@ -524,6 +524,7 @@ Acceptance checks:
 - A manifest can be generated from selected handoff audit items without launching agents.
 - The manifest declares `manual_only` mode and records that it does not launch agents or send messages.
 - Generated cases include the full restart prompt and a rubric for no-tools/no-implementation first responses.
+- Generated manifests expose a stable result schema with `not_run`, `pass`, `fail`, and `blocked` status values.
 
 ## Phase 6: Provider-Agnostic Continuity Quality
 

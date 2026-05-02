@@ -200,11 +200,34 @@ def test_handoff_audit_cli_writes_manual_e2e_manifest(
     assert f"E2E manifest written: {manifest_path}" in captured.err
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["kind"] == "restart_prompt_e2e_manifest"
+    assert manifest["schema_version"] == 1
     assert manifest["mode"] == "manual_only"
+    assert manifest["result_status_values"] == ["not_run", "pass", "fail", "blocked"]
     assert manifest["safety"]["launches_agents"] is False
     assert manifest["safety"]["sends_messages"] is False
     assert manifest["summary"]["cases"] == 1
     assert manifest["summary"]["prompt_compliance_counts"]["pass"] == 1
+    assert manifest["manual_run_summary"] == {
+        "status": "not_run",
+        "cases_total": 1,
+        "cases_passed": 0,
+        "cases_failed": 0,
+        "cases_blocked": 0,
+        "used_tools": None,
+        "started_implementation": None,
+        "notes": "",
+    }
+    assert manifest["case_result_schema"]["pass_requires"] == [
+        "used_tools=false",
+        "ran_commands=false",
+        "inspected_files=false",
+        "edited_files=false",
+        "started_implementation=false",
+        "summarized_context=true",
+        "stated_posture=true",
+        "listed_modes=true",
+        "asked_for_confirmation=true",
+    ]
 
     case = manifest["cases"][0]
     assert case["session_id"] == "session-rich"
@@ -216,6 +239,10 @@ def test_handoff_audit_cli_writes_manual_e2e_manifest(
         "plan",
         "implement",
     ]
+    assert case["manual_result"]["status"] == "not_run"
+    assert case["manual_result"]["agent_id"] == ""
+    assert case["manual_result"]["failure_reason"] == ""
+    assert case["manual_result"]["observed"]["used_tools"] is None
     assert case["result_template"]["observed"]["used_tools"] is None
 
 
