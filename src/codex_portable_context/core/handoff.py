@@ -22,6 +22,21 @@ from .redaction import RedactionContext, redact_text
 
 RECENT_ACTION_LOOKBACK = 80
 LINKED_CHILD_SESSION_LIMIT = 12
+PROVIDER_CAPABILITY_KEYS = (
+    "supports_tools",
+    "supports_reader_html",
+    "supports_handoff_source_enrichment",
+    "supports_context_sections",
+    "supports_redaction_source_context",
+    "supports_latest_selection",
+)
+SECTION_SOURCE_VALUES = (
+    "source_backed",
+    "derived_mirror",
+    "provider_enrichment",
+    "unavailable",
+    "not_supported",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,7 +186,9 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         f"- Updated: `{updated_at}`",
         f"- Exported At: `{generated_at}`",
         f"- Redacted: `{'yes' if handoff.get('redacted') else 'no'}`",
+        f"- Provider: `{source.get('provider') or handoff.get('provider') or 'unknown'}`",
         f"- Source session available locally: `{'yes' if source.get('available') else 'no'}`",
+        f"- Source mode: `{source.get('mode') or 'unknown'}`",
         "",
         f"- Started with: {session.get('preview') or 'n/a'}",
         f"- Last substantive user request: {session.get('last_substantive_user_request') or 'n/a'}",
@@ -600,9 +617,16 @@ def _build_handoff_payload(
         linked_child_sessions=linked_child_sessions,
     )
 
+    provider_id = _string(metadata.get("provider")) or "codex"
+    source_availability = _build_source_availability(
+        provider_id=provider_id,
+        parsed=parsed,
+        metadata=metadata,
+    )
+
     return {
         "handoff_schema_version": 1,
-        "provider": metadata.get("provider") or "codex",
+        "provider": provider_id,
         "provider_session_id": metadata.get("provider_session_id"),
         "generated_at": _iso_now(),
         "session_id": metadata.get("session_id"),
@@ -632,16 +656,7 @@ def _build_handoff_payload(
         "continuity_entry": continuity_entry,
         "open_loops": open_loops,
         "artifacts": artifacts,
-        "source_availability": {
-            "available": parsed is not None,
-            "exact_recent_window": parsed is not None,
-            "source_file": metadata.get("source_file"),
-            "note": (
-                "Recent window and tool activity were extracted from the local source session."
-                if parsed is not None
-                else "Only derived mirror data was available locally."
-            ),
-        },
+        "source_availability": source_availability,
         "recent_actions": recent_actions,
         "recent_window": recent_window,
         "recent_notable_events": recent_events,
@@ -671,7 +686,10 @@ def _load_source_session(metadata: dict[str, Any]) -> ParsedSession | None:
         return None
 
     source_dir = _infer_source_dir(source_file.resolve(), source_relpath_value)
-    adapter = get_provider_adapter(provider_id)
+    try:
+        adapter = get_provider_adapter(provider_id)
+    except ValueError:
+        return None
     return adapter.parse_session_file(source_file.resolve(), source_dir)
 
 
@@ -680,6 +698,143 @@ def _infer_source_dir(source_file: Path, source_relpath: str) -> Path:
     for _ in PurePosixPath(source_relpath).parts:
         current = current.parent
     return current
+
+
+def _build_source_availability(
+    *,
+    provider_id: str,
+    parsed: ParsedSession | None,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    capabilities = _provider_capabilities_payload(provider_id)
+    source_file = _string(metadata.get("source_file"))
+    source_relpath = _string(metadata.get("source_relpath"))
+    source_available = parsed is not None
+    exact_recent_window = source_available
+    source_mode = "local_source_session" if source_available else "derived_mirror_only"
+    limitations = _source_limitations(
+        source_available=source_available,
+        source_file=source_file,
+        source_relpath=source_relpath,
+        capabilities=capabilities,
+    )
+    section_sources = _source_section_sources(
+        provider_id=provider_id,
+        source_available=source_available,
+        capabilities=capabilities,
+    )
+
+    return {
+        "provider": provider_id,
+        "mode": source_mode,
+        "available": source_available,
+        "exact_recent_window": exact_recent_window,
+        "source_file": source_file,
+        "source_relpath": source_relpath,
+        "capabilities": capabilities,
+        "section_source_values": list(SECTION_SOURCE_VALUES),
+        "section_sources": section_sources,
+        "available_sections": _available_sections_from_sources(section_sources),
+        "limitations": limitations,
+        "note": _source_availability_note(
+            source_available=source_available,
+            capabilities=capabilities,
+        ),
+    }
+
+
+def _provider_capabilities_payload(provider_id: str) -> dict[str, bool]:
+    try:
+        capabilities = get_provider_adapter(provider_id).capabilities()
+    except ValueError:
+        return {key: False for key in PROVIDER_CAPABILITY_KEYS}
+    return {
+        key: bool(getattr(capabilities, key))
+        for key in PROVIDER_CAPABILITY_KEYS
+    }
+
+
+def _source_limitations(
+    *,
+    source_available: bool,
+    source_file: str,
+    source_relpath: str,
+    capabilities: dict[str, bool],
+) -> list[str]:
+    limitations: list[str] = []
+    if not source_available:
+        if source_file and source_relpath:
+            limitations.append("Local raw source file was not available or could not be parsed.")
+        else:
+            limitations.append("Only derived mirror data was available locally.")
+    if not capabilities["supports_tools"]:
+        limitations.append("Provider adapter does not expose normalized tool activity.")
+    if not capabilities["supports_context_sections"]:
+        limitations.append("Provider adapter does not expose normalized context sections.")
+    if not capabilities["supports_handoff_source_enrichment"]:
+        limitations.append("Provider adapter does not support source-backed handoff enrichment.")
+    return limitations
+
+
+def _source_section_sources(
+    *,
+    provider_id: str,
+    source_available: bool,
+    capabilities: dict[str, bool],
+) -> dict[str, str]:
+    bridge_source = "source_backed" if source_available else "derived_mirror"
+    recent_source = "source_backed" if source_available else "unavailable"
+    tool_source = (
+        "source_backed"
+        if source_available and capabilities["supports_tools"]
+        else "not_supported"
+        if not capabilities["supports_tools"]
+        else "unavailable"
+    )
+    codex_enrichment_source = (
+        "provider_enrichment"
+        if source_available and provider_id == "codex"
+        else "not_supported"
+        if source_available
+        else "unavailable"
+    )
+    return {
+        "session": bridge_source,
+        "continuation_brief": bridge_source,
+        "resolved_state": bridge_source,
+        "current_state": bridge_source,
+        "changed_artifacts": bridge_source,
+        "decisions_and_invariants": bridge_source,
+        "reentry_posture": "derived_mirror",
+        "restart_prompt": "derived_mirror",
+        "recent_window": recent_source,
+        "recent_notable_events": recent_source,
+        "recent_tool_activity": tool_source,
+        "compaction_summaries": codex_enrichment_source,
+        "linked_child_sessions": codex_enrichment_source,
+    }
+
+
+def _available_sections_from_sources(section_sources: dict[str, str]) -> dict[str, bool]:
+    return {
+        key: value not in {"unavailable", "not_supported"}
+        for key, value in section_sources.items()
+    }
+
+
+def _source_availability_note(
+    *,
+    source_available: bool,
+    capabilities: dict[str, bool],
+) -> str:
+    if not source_available:
+        return "Only derived mirror data was available locally."
+    if capabilities["supports_tools"]:
+        return "Recent window and tool activity were extracted from the local source session."
+    return (
+        "Recent window was extracted from the local source session; "
+        "tool activity is unavailable for this provider."
+    )
 
 
 def _render_block_payload(

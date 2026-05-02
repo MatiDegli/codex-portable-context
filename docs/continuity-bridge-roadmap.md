@@ -528,7 +528,18 @@ Acceptance checks:
 
 ## Phase 6: Provider-Agnostic Continuity Quality
 
-Implementation status: pending.
+Implementation status: in progress.
+
+Current slice:
+
+- `source_availability` now exposes provider id, source mode, normalized provider
+  capabilities, per-section source status, bridge section availability, and
+  explicit limitations.
+- Codex and Claude Code handoffs share the same bridge JSON keys; Claude Code
+  marks tool activity, compaction summaries, and linked child sessions as
+  unavailable instead of inventing data.
+- Missing raw source files degrade to `derived_mirror_only` with stable section
+  booleans and limitations.
 
 Keep the new bridge fields provider-neutral.
 

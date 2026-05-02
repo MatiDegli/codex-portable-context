@@ -20,6 +20,17 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
     assert payload["session_id"] == "session-5678"
     assert payload["source_availability"]["available"] is True
+    assert payload["source_availability"]["provider"] == "codex"
+    assert payload["source_availability"]["mode"] == "local_source_session"
+    assert payload["source_availability"]["capabilities"]["supports_tools"] is True
+    assert payload["source_availability"]["section_sources"]["recent_window"] == "source_backed"
+    assert (
+        payload["source_availability"]["section_sources"]["linked_child_sessions"]
+        == "provider_enrichment"
+    )
+    assert payload["source_availability"]["available_sections"]["restart_prompt"] is True
+    assert payload["source_availability"]["available_sections"]["recent_window"] is True
+    assert payload["source_availability"]["available_sections"]["recent_tool_activity"] is True
     assert (
         payload["session"]["last_substantive_user_request"]
         == "Why is the IDE output empty?"
@@ -201,6 +212,17 @@ def test_handoff_cli_prints_markdown_path_and_handles_missing_source(
 
     payload = json.loads((out_dir / "handoffs" / "session-1234.json").read_text(encoding="utf-8"))
     assert payload["source_availability"]["available"] is False
+    assert payload["source_availability"]["mode"] == "derived_mirror_only"
+    assert (
+        payload["source_availability"]["section_sources"]["continuation_brief"]
+        == "derived_mirror"
+    )
+    assert payload["source_availability"]["section_sources"]["recent_window"] == "unavailable"
+    assert payload["source_availability"]["available_sections"]["restart_prompt"] is True
+    assert payload["source_availability"]["available_sections"]["recent_window"] is False
+    assert payload["source_availability"]["limitations"] == [
+        "Local raw source file was not available or could not be parsed."
+    ]
     assert payload["session"]["last_substantive_user_request"] == "Please inspect Fixture Session."
     assert payload["recent_window"] == []
     assert payload["recent_actions"] == []
@@ -741,6 +763,112 @@ def test_handoff_cli_bootstrap_prompt_avoids_artifact_next_action(
         "expected unless the user asks for follow-up work."
     )
     assert not next_action.startswith("Inspect ")
+
+
+def test_handoff_cli_uses_same_bridge_contract_for_claude_code(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    claude_home = tmp_path / ".claude"
+    project_dir = claude_home / "projects" / "sample-project"
+    project_dir.mkdir(parents=True)
+    session_id = "09bc645b-398f-4fc6-9889-c8120625a5b0"
+    session_file = project_dir / f"{session_id}.jsonl"
+    records = [
+        {
+            "sessionId": session_id,
+            "cwd": r"c:\Criticos\Proyectos\PreciseOn\btc_trading_ai",
+            "model": "claude-opus-4-6",
+            "timestamp": "2026-03-17T12:00:00Z",
+            "type": "session",
+        },
+        {
+            "timestamp": "2026-03-17T12:00:05Z",
+            "type": "message",
+            "role": "user",
+            "message": {"content": "Please review the boundary plan."},
+        },
+        {
+            "timestamp": "2026-03-17T12:00:08Z",
+            "type": "message",
+            "role": "assistant",
+            "message": {
+                "content": (
+                    "The decision is to keep provider-specific parsing inside "
+                    "adapters and preserve the shared handoff schema."
+                )
+            },
+        },
+    ]
+    session_file.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n",
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "out-claude"
+    export_mirror(
+        MirrorExportConfig(
+            codex_home=claude_home,
+            source_dir=claude_home / "projects",
+            out_dir=out_dir,
+            provider="claude-code",
+        )
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), session_id])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads(
+        (out_dir / "handoffs" / f"{session_id}.json").read_text(encoding="utf-8")
+    )
+    assert payload["provider"] == "claude-code"
+    assert payload["continuation_brief"]
+    assert payload["resolved_state"]
+    assert payload["changed_artifacts"]
+    assert payload["decisions_and_invariants"]
+    assert payload["reentry_posture"]
+    assert payload["restart_prompt"]["text"]
+    source = payload["source_availability"]
+    assert source["provider"] == "claude-code"
+    assert source["mode"] == "local_source_session"
+    assert source["available"] is True
+    assert source["exact_recent_window"] is True
+    assert source["capabilities"]["supports_tools"] is False
+    assert source["capabilities"]["supports_context_sections"] is True
+    assert source["section_source_values"] == [
+        "source_backed",
+        "derived_mirror",
+        "provider_enrichment",
+        "unavailable",
+        "not_supported",
+    ]
+    assert source["section_sources"]["continuation_brief"] == "source_backed"
+    assert source["section_sources"]["restart_prompt"] == "derived_mirror"
+    assert source["section_sources"]["recent_tool_activity"] == "not_supported"
+    assert source["section_sources"]["linked_child_sessions"] == "not_supported"
+    assert set(source["available_sections"]) == {
+        "session",
+        "continuation_brief",
+        "resolved_state",
+        "current_state",
+        "changed_artifacts",
+        "decisions_and_invariants",
+        "reentry_posture",
+        "restart_prompt",
+        "recent_window",
+        "recent_notable_events",
+        "recent_tool_activity",
+        "compaction_summaries",
+        "linked_child_sessions",
+    }
+    assert source["available_sections"]["restart_prompt"] is True
+    assert source["available_sections"]["recent_window"] is True
+    assert source["available_sections"]["recent_tool_activity"] is False
+    assert source["available_sections"]["compaction_summaries"] is False
+    assert source["available_sections"]["linked_child_sessions"] is False
+    assert source["limitations"] == [
+        "Provider adapter does not expose normalized tool activity."
+    ]
 
 
 def build_fixture_mirror(
