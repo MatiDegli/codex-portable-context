@@ -528,7 +528,7 @@ Acceptance checks:
 
 ## Phase 6: Provider-Agnostic Continuity Quality
 
-Implementation status: in progress.
+Implementation status: complete.
 
 Current slice:
 
@@ -545,6 +545,8 @@ Current slice:
 - The regression suite now includes a provider-neutral source-contract fixture
   matrix for Codex local source, missing source, redacted mirror, and Claude
   Code source.
+- The regression suite verifies top-level and critical bridge-section JSON key
+  parity across the same provider matrix.
 
 Keep the new bridge fields provider-neutral.
 
@@ -564,6 +566,8 @@ Acceptance checks:
   `source_availability` contracts.
 - Fixture coverage verifies the same source-contract keys across Codex, Claude
   Code, redacted, and source-unavailable handoffs.
+- JSON key parity coverage verifies that consumers can read the same critical
+  handoff keys across providers and degraded source modes.
 
 ## Validation Strategy
 

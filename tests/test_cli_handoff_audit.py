@@ -4,6 +4,117 @@ from pathlib import Path
 from codex_portable_context.cli.handoff_audit import main
 from codex_portable_context.core.mirror import MirrorExportConfig, export_mirror
 
+HANDOFF_TOP_LEVEL_KEYS = {
+    "handoff_schema_version",
+    "provider",
+    "provider_session_id",
+    "generated_at",
+    "session_id",
+    "title",
+    "updated_at",
+    "session_timestamp",
+    "redacted",
+    "session",
+    "continuation_brief",
+    "resolved_state",
+    "current_state",
+    "changed_artifacts",
+    "decisions_and_invariants",
+    "reentry_posture",
+    "restart_prompt",
+    "continuity_entry",
+    "open_loops",
+    "artifacts",
+    "source_availability",
+    "recent_actions",
+    "recent_window",
+    "recent_notable_events",
+    "recent_tool_activity",
+    "compaction_summaries",
+    "linked_child_sessions",
+    "operator_note_template",
+    "transcript_excerpt",
+}
+
+BRIDGE_SECTION_KEYS = {
+    "continuation_brief": {
+        "what_we_were_doing",
+        "why_it_mattered",
+        "latest_resolved_request",
+        "last_meaningful_outcome",
+        "next_best_action",
+        "do_not_do",
+        "confidence",
+        "evidence",
+    },
+    "resolved_state": {
+        "latest_user_request",
+        "previous_user_request",
+        "latest_user_request_is_context_dependent",
+        "contextual_user_request",
+        "request_resolution_status",
+        "resolution_summary",
+        "validation_summary",
+        "commit_summary",
+        "dirty_state_summary",
+        "remaining_local_only_paths",
+    },
+    "current_state": {
+        "status",
+        "current_focus",
+        "last_meaningful_outcome",
+        "next_recommended_action",
+        "known_blocker",
+    },
+    "changed_artifacts": {
+        "summary",
+        "changed_paths",
+        "key_paths",
+        "recommended_inspection_order",
+    },
+    "decisions_and_invariants": {
+        "confidence",
+        "decisions",
+        "invariants",
+        "rejected_paths",
+        "open_architecture_questions",
+        "evidence",
+    },
+    "reentry_posture": {
+        "role_hint",
+        "initial_mode",
+        "requires_confirmation_before_changes",
+        "allowed_first_turn_actions",
+        "forbidden_first_turn_actions",
+        "first_turn_contract",
+    },
+    "restart_prompt": {
+        "kind",
+        "text",
+    },
+    "source_availability": {
+        "provider",
+        "mode",
+        "available",
+        "exact_recent_window",
+        "source_file",
+        "source_relpath",
+        "capabilities",
+        "section_source_values",
+        "section_sources",
+        "available_sections",
+        "limitations",
+        "note",
+    },
+    "open_loops": {
+        "pending_validation",
+        "open_question",
+        "unresolved_failure",
+        "expected_next_command",
+        "operational_risk",
+    },
+}
+
 
 def test_handoff_audit_cli_reports_memory_coverage(tmp_path: Path, capsys) -> None:
     out_dir = build_fixture_mirror(tmp_path)
@@ -371,6 +482,30 @@ def test_handoff_audit_provider_neutral_source_contract_matrix(
     )
 
 
+def test_handoff_json_key_parity_across_provider_matrix(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    handoffs = provider_matrix_handoffs(tmp_path, capsys)
+
+    for case_name, handoff in handoffs.items():
+        assert set(handoff) == HANDOFF_TOP_LEVEL_KEYS, case_name
+        for section, expected_keys in BRIDGE_SECTION_KEYS.items():
+            assert set(handoff[section]) == expected_keys, f"{case_name}:{section}"
+
+    assert handoffs["codex"]["provider"] == "codex"
+    assert handoffs["missing_source"]["provider"] == "codex"
+    assert handoffs["redacted"]["provider"] == "codex"
+    assert handoffs["claude"]["provider"] == "claude-code"
+    assert handoffs["codex"]["source_availability"]["mode"] == "local_source_session"
+    assert (
+        handoffs["missing_source"]["source_availability"]["mode"]
+        == "derived_mirror_only"
+    )
+    assert handoffs["redacted"]["source_availability"]["mode"] == "derived_mirror_only"
+    assert handoffs["claude"]["source_availability"]["mode"] == "local_source_session"
+
+
 def test_handoff_audit_cli_rejects_negative_limit(tmp_path: Path, capsys) -> None:
     out_dir = build_fixture_mirror(tmp_path)
 
@@ -544,6 +679,39 @@ def audit_json(out_dir: Path, selector: str, capsys) -> dict:
 
     assert exit_code == 0
     return json.loads(captured.out)
+
+
+def provider_matrix_handoffs(tmp_path: Path, capsys) -> dict[str, dict]:
+    codex_out = build_fixture_mirror(tmp_path / "codex")
+    audit_json(codex_out, "session-rich", capsys)
+
+    missing_source_out = build_fixture_mirror(tmp_path / "missing-source")
+    rich_metadata = json.loads(
+        (missing_source_out / "metadata" / "session-rich.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    Path(rich_metadata["source_file"]).unlink()
+    audit_json(missing_source_out, "session-rich", capsys)
+
+    redacted_out = build_fixture_mirror(tmp_path / "redacted", redact=True)
+    audit_json(redacted_out, "session-rich", capsys)
+
+    claude_out = build_claude_fixture_mirror(tmp_path / "claude")
+    audit_json(claude_out, "claude-session", capsys)
+
+    return {
+        "codex": load_handoff(codex_out, "session-rich"),
+        "missing_source": load_handoff(missing_source_out, "session-rich"),
+        "redacted": load_handoff(redacted_out, "session-rich"),
+        "claude": load_handoff(claude_out, "claude-session"),
+    }
+
+
+def load_handoff(out_dir: Path, session_id: str) -> dict:
+    return json.loads(
+        (out_dir / "handoffs" / f"{session_id}.json").read_text(encoding="utf-8")
+    )
 
 
 def assert_source_contract_case(
