@@ -295,6 +295,82 @@ def test_handoff_audit_cli_flags_broken_source_contract(
     assert payload["summary"]["source_contract_counts"]["fail"] == 1
 
 
+def test_handoff_audit_provider_neutral_source_contract_matrix(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    codex_out = build_fixture_mirror(tmp_path / "codex")
+    codex_payload = audit_json(codex_out, "session-rich", capsys)
+    assert_source_contract_case(
+        codex_out,
+        codex_payload,
+        session_id="session-rich",
+        provider="codex",
+        mode="local_source_session",
+        expected_sections={
+            "continuation_brief": "source_backed",
+            "recent_window": "source_backed",
+            "recent_tool_activity": "source_backed",
+            "restart_prompt": "derived_mirror",
+        },
+    )
+
+    missing_source_out = build_fixture_mirror(tmp_path / "missing-source")
+    rich_metadata = json.loads(
+        (missing_source_out / "metadata" / "session-rich.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    Path(rich_metadata["source_file"]).unlink()
+    missing_source_payload = audit_json(missing_source_out, "session-rich", capsys)
+    assert_source_contract_case(
+        missing_source_out,
+        missing_source_payload,
+        session_id="session-rich",
+        provider="codex",
+        mode="derived_mirror_only",
+        expected_sections={
+            "continuation_brief": "derived_mirror",
+            "recent_window": "unavailable",
+            "recent_tool_activity": "unavailable",
+            "restart_prompt": "derived_mirror",
+        },
+    )
+
+    redacted_out = build_fixture_mirror(tmp_path / "redacted", redact=True)
+    redacted_payload = audit_json(redacted_out, "session-rich", capsys)
+    assert_source_contract_case(
+        redacted_out,
+        redacted_payload,
+        session_id="session-rich",
+        provider="codex",
+        mode="derived_mirror_only",
+        expected_sections={
+            "continuation_brief": "derived_mirror",
+            "recent_window": "unavailable",
+            "restart_prompt": "derived_mirror",
+        },
+    )
+
+    claude_out = build_claude_fixture_mirror(tmp_path / "claude")
+    claude_payload = audit_json(claude_out, "claude-session", capsys)
+    assert_source_contract_case(
+        claude_out,
+        claude_payload,
+        session_id="claude-session",
+        provider="claude-code",
+        mode="local_source_session",
+        expected_sections={
+            "continuation_brief": "source_backed",
+            "recent_window": "source_backed",
+            "recent_tool_activity": "not_supported",
+            "compaction_summaries": "not_supported",
+            "linked_child_sessions": "not_supported",
+            "restart_prompt": "derived_mirror",
+        },
+    )
+
+
 def test_handoff_audit_cli_rejects_negative_limit(tmp_path: Path, capsys) -> None:
     out_dir = build_fixture_mirror(tmp_path)
 
@@ -311,6 +387,7 @@ def build_fixture_mirror(
     include_bootstrap: bool = False,
     include_active: bool = False,
     active_thread_name: str = "Active Session",
+    redact: bool = False,
 ) -> Path:
     codex_home = tmp_path / ".codex"
     source_dir = codex_home / "sessions" / "2026" / "03" / "16"
@@ -403,9 +480,102 @@ def build_fixture_mirror(
             codex_home=codex_home,
             source_dir=codex_home / "sessions",
             out_dir=out_dir,
+            redact=redact,
         )
     )
     return out_dir
+
+
+def build_claude_fixture_mirror(tmp_path: Path) -> Path:
+    claude_home = tmp_path / ".claude"
+    project_dir = claude_home / "projects" / "sample-project"
+    project_dir.mkdir(parents=True)
+    session_path = project_dir / "claude-session.jsonl"
+    records = [
+        {
+            "sessionId": "claude-session",
+            "cwd": "/home/tester/claude-project",
+            "model": "claude-opus-4-6",
+            "timestamp": "2026-03-17T12:00:00Z",
+            "type": "session",
+        },
+        {
+            "timestamp": "2026-03-17T12:00:05Z",
+            "type": "message",
+            "role": "user",
+            "message": {"content": "Please review the provider boundary plan."},
+        },
+        {
+            "timestamp": "2026-03-17T12:00:08Z",
+            "type": "message",
+            "role": "assistant",
+            "message": {
+                "content": (
+                    "The decision is to keep provider-specific parsing inside "
+                    "adapters and preserve the shared handoff schema."
+                )
+            },
+        },
+        {
+            "timestamp": "2026-03-17T12:00:09Z",
+            "type": "file-history-snapshot",
+            "files": ["app.py"],
+        },
+    ]
+    session_path.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n",
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "out"
+    export_mirror(
+        MirrorExportConfig(
+            codex_home=claude_home,
+            source_dir=claude_home / "projects",
+            out_dir=out_dir,
+            provider="claude-code",
+        )
+    )
+    return out_dir
+
+
+def audit_json(out_dir: Path, selector: str, capsys) -> dict:
+    exit_code = main(["--out-dir", str(out_dir), "--json", selector])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    return json.loads(captured.out)
+
+
+def assert_source_contract_case(
+    out_dir: Path,
+    payload: dict,
+    *,
+    session_id: str,
+    provider: str,
+    mode: str,
+    expected_sections: dict[str, str],
+) -> None:
+    assert payload["summary"]["source_contract_counts"]["pass"] == 1
+    item = payload["items"][0]
+    assert item["session_id"] == session_id
+    assert item["source_contract_compliance"]["status"] == "pass"
+    assert item["source_contract_compliance"]["checks"][
+        "available_sections_consistent"
+    ] is True
+
+    handoff = json.loads(
+        (out_dir / "handoffs" / f"{session_id}.json").read_text(encoding="utf-8")
+    )
+    source = handoff["source_availability"]
+    assert source["provider"] == provider
+    assert source["mode"] == mode
+    assert set(source["available_sections"]) == set(source["section_sources"])
+    assert source["available_sections"]["restart_prompt"] is True
+    for section, expected_source in expected_sections.items():
+        assert source["section_sources"][section] == expected_source
+        assert source["available_sections"][section] == (
+            expected_source not in {"unavailable", "not_supported"}
+        )
 
 
 def write_session(

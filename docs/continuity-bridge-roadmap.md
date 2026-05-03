@@ -542,6 +542,9 @@ Current slice:
   booleans and limitations.
 - `codex-session-handoff-audit` now reports source-contract compliance counts
   and flags handoff JSON that drops or corrupts provider-neutral section fields.
+- The regression suite now includes a provider-neutral source-contract fixture
+  matrix for Codex local source, missing source, redacted mirror, and Claude
+  Code source.
 
 Keep the new bridge fields provider-neutral.
 
@@ -559,6 +562,8 @@ Acceptance checks:
 - The handoff remains useful when only derived mirror data exists, even if less rich.
 - Handoff audit reports `source_contract_counts` and fails malformed
   `source_availability` contracts.
+- Fixture coverage verifies the same source-contract keys across Codex, Claude
+  Code, redacted, and source-unavailable handoffs.
 
 ## Validation Strategy
 
