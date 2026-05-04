@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from codex_portable_context.core.html_reader import render_session_reader
 from codex_portable_context.core.mirror import MirrorExportConfig, export_mirror
 from codex_portable_context.core.redaction import RedactionContext, redact_text
 
@@ -162,6 +163,34 @@ def test_export_mirror_supports_claude_code_provider(tmp_path: Path) -> None:
     assert "Please inspect the project." in markdown_path.read_text(encoding="utf-8")
     assert "I will inspect it." in markdown_path.read_text(encoding="utf-8")
     assert session_path.resolve().as_posix() in metadata["source_file"].replace("\\", "/")
+
+
+def test_session_reader_uses_lightweight_transcript_preview_for_long_sessions() -> None:
+    long_middle = "middle-heavy-tool-output\n" * 7_000
+    markdown_text = (
+        "# Session: Long Fixture\n\n"
+        "important opening context\n"
+        f"{long_middle}"
+        "important closing context\n"
+    )
+    html = render_session_reader(
+        entry={
+            "session_id": "long-session",
+            "title": "Long Fixture",
+            "markdown_relpath": "sessions/long-session.md",
+            "metadata_relpath": "metadata/long-session.json",
+            "summary": {"preview": "Long fixture preview."},
+        },
+        metadata_text='{"session_id":"long-session"}',
+        markdown_text=markdown_text,
+    )
+
+    assert "lightweight preview" in html
+    assert "Open the full transcript" in html
+    assert "important opening context" in html
+    assert "important closing context" in html
+    assert html.count("middle-heavy-tool-output") < 7_000
+    assert len(html) < len(markdown_text)
 
 
 def write_fixture_session(tmp_path: Path) -> tuple[Path, Path]:

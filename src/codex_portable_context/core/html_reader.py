@@ -3,9 +3,26 @@
 from __future__ import annotations
 
 import html
+from dataclasses import dataclass
 from typing import Any
 
 from .markdown import pretty_timestamp
+
+MAX_INLINE_TRANSCRIPT_CHARS = 120_000
+TRANSCRIPT_PREVIEW_HEAD_CHARS = 70_000
+TRANSCRIPT_PREVIEW_TAIL_CHARS = 40_000
+MAX_INLINE_METADATA_CHARS = 80_000
+
+
+@dataclass(frozen=True, slots=True)
+class LightweightTextView:
+    """Prepared text for inline reader rendering."""
+
+    text: str
+    original_chars: int
+    rendered_chars: int
+    omitted_chars: int
+    truncated: bool
 
 
 def render_reader_index(
@@ -303,6 +320,28 @@ def render_session_reader(
     handoff_markdown_rel = f"../handoffs/{session_id}.md"
     handoff_json_rel = f"../handoffs/{session_id}.json"
     restart_prompt_html = _restart_prompt_panel(handoff)
+    transcript_view = _lightweight_text_view(
+        markdown_text,
+        max_chars=MAX_INLINE_TRANSCRIPT_CHARS,
+        head_chars=TRANSCRIPT_PREVIEW_HEAD_CHARS,
+        tail_chars=TRANSCRIPT_PREVIEW_TAIL_CHARS,
+    )
+    metadata_view = _lightweight_text_view(
+        metadata_text,
+        max_chars=MAX_INLINE_METADATA_CHARS,
+        head_chars=50_000,
+        tail_chars=20_000,
+    )
+    transcript_notice = _lightweight_notice(
+        label="transcript",
+        view=transcript_view,
+        full_artifact_rel=transcript_rel,
+    )
+    metadata_notice = _lightweight_notice(
+        label="metadata",
+        view=metadata_view,
+        full_artifact_rel=metadata_rel,
+    )
 
     metadata_rows = [
         ("Session ID", session_id),
@@ -518,6 +557,15 @@ def render_session_reader(
       font-size: 0.94rem;
       line-height: 1.55;
     }}
+    .lightweight-notice {{
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid color-mix(in srgb, var(--border) 70%, var(--accent) 30%);
+      background: var(--accent-soft);
+      color: var(--muted);
+      line-height: 1.5;
+    }}
     .badge {{
       display: inline-block;
       padding: 4px 10px;
@@ -608,10 +656,12 @@ def render_session_reader(
       </aside>
       <section class="panel" id="transcript">
         <h2>Transcript</h2>
-        <pre>{_escape_text(markdown_text)}</pre>
+        {transcript_notice}
+        <pre>{_escape_text(transcript_view.text)}</pre>
         <details id="raw-metadata">
           <summary>Show raw metadata JSON</summary>
-          <pre>{_escape_text(metadata_text)}</pre>
+          {metadata_notice}
+          <pre>{_escape_text(metadata_view.text)}</pre>
         </details>
       </section>
     </section>
@@ -742,6 +792,73 @@ def _restart_prompt_panel(handoff: dict[str, Any] | None) -> str:
         f"{_escape_text(restart_prompt_text)}"
         "</textarea>"
         "</div>"
+    )
+
+
+def _lightweight_text_view(
+    text: str,
+    *,
+    max_chars: int,
+    head_chars: int,
+    tail_chars: int,
+) -> LightweightTextView:
+    original_chars = len(text)
+    if original_chars <= max_chars:
+        return LightweightTextView(
+            text=text,
+            original_chars=original_chars,
+            rendered_chars=original_chars,
+            omitted_chars=0,
+            truncated=False,
+        )
+
+    head = _trim_to_line_boundary(text[:head_chars], prefer_end=True)
+    tail = _trim_to_line_boundary(text[-tail_chars:], prefer_end=False)
+    omitted_chars = max(0, original_chars - len(head) - len(tail))
+    separator = (
+        "\n\n"
+        "[... inline preview truncated for browser performance; "
+        f"{omitted_chars:,} character(s) omitted. Open the linked "
+        "artifact for the full content. ...]"
+        "\n\n"
+    )
+    rendered_text = f"{head}{separator}{tail}"
+    return LightweightTextView(
+        text=rendered_text,
+        original_chars=original_chars,
+        rendered_chars=len(rendered_text),
+        omitted_chars=omitted_chars,
+        truncated=True,
+    )
+
+
+def _trim_to_line_boundary(text: str, *, prefer_end: bool) -> str:
+    if not text:
+        return text
+    if prefer_end:
+        newline = text.rfind("\n")
+        return text[:newline] if newline > 0 else text
+    newline = text.find("\n")
+    return text[newline + 1 :] if newline >= 0 else text
+
+
+def _lightweight_notice(
+    *,
+    label: str,
+    view: LightweightTextView,
+    full_artifact_rel: str,
+) -> str:
+    if not view.truncated:
+        return ""
+    return (
+        '<p class="lightweight-notice">'
+        f"This {label} is shown as a lightweight preview to keep the browser "
+        "responsive. "
+        f"Rendered {view.rendered_chars:,} of {view.original_chars:,} "
+        "character(s); "
+        f"{view.omitted_chars:,} character(s) omitted. "
+        f'<a href="{_escape_attr(full_artifact_rel)}">Open the full {label}</a>.'
+        "</p>"
     )
 
 

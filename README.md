@@ -79,6 +79,8 @@ Use `out/README.md` as the main entry point when browsing the mirror on another 
 
 Use `out/index.html` when you want a static browser UI. It is generated from the same derived mirror, adds client-side filtering, and links to a per-session reader page plus the raw Markdown and JSON exports.
 Per-session reader pages also include quick jump links for snapshot, metadata, transcript, and raw metadata.
+For very long sessions, the reader keeps the browser responsive by showing a
+lightweight transcript preview with links to the full Markdown artifact.
 When a handoff bundle exists, the same reader surface also points at the expected `handoffs/` artifacts.
 
 Repeated runs reuse unchanged derived artifacts when possible. The hidden state file is local bookkeeping for the mirror output only.

@@ -276,6 +276,8 @@ Expected behavior:
 - safe to move together with the mirror
 - links back to `../index.html`, `../README.md`, `../sessions/<session-id>.md`, and `../metadata/<session-id>.json`
 - may present the transcript as escaped preformatted text instead of fully rendered Markdown
+- for long sessions, may inline only a lightweight transcript preview and must
+  link to the full `sessions/<session-id>.md` artifact
 
 ## README.md in the Mirror Root
 

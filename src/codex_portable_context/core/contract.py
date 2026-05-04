@@ -14,7 +14,7 @@ HANDOFFS_DIRNAME = "handoffs"
 METADATA_DIRNAME = "metadata"
 SESSIONS_DIRNAME = "sessions"
 READER_DIRNAME = "reader"
-EXPORT_FORMAT_VERSION = 7
+EXPORT_FORMAT_VERSION = 8
 
 MARKDOWN_FILTER_RULES = (
     "Routine token_count events are omitted from Markdown.",
