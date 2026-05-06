@@ -39,6 +39,8 @@ If the original local source session file is still available through `metadata.s
 - inferred repo metadata from dominant absolute artifact paths when the
   original session cwd is missing or stale
 - durable decisions, invariants, rejected paths, and open architecture questions
+- explanatory answer outcomes, including explicit conclusions,
+  recommendations, and answered trade-offs in English or Spanish
 - a re-entry posture contract that defaults the first turn to read-only review
 - a copy-ready restart prompt for a fresh local session
 - a compact current-state layer

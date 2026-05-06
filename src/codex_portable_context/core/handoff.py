@@ -2298,6 +2298,12 @@ def _build_decisions_and_invariants(
     invariants: list[dict[str, str]] = []
     rejected_paths: list[dict[str, str]] = []
     open_questions: list[dict[str, str]] = []
+    request_resolution_status = _string(resolved_state.get("request_resolution_status"))
+    request_is_resolved = request_resolution_status in {
+        "answered",
+        "handled_with_changes",
+        "completed",
+    }
 
     sources = [
         ("continuation_brief", _string(continuation_brief.get("what_we_were_doing"))),
@@ -2308,8 +2314,9 @@ def _build_decisions_and_invariants(
         sources.extend(_structural_memory_sources(parsed))
         sources.extend(_review_memory_sources(parsed))
         sources.extend(_implementation_outcome_sources(parsed))
+        sources.extend(_answer_outcome_sources(parsed))
         sources.extend(
-            ("recent_window", block.text)
+            (f"recent_window_{block.kind}", block.text)
             for block in parsed.conversation_entries[-8:]
             if block.kind in {"user", "assistant"}
         )
@@ -2342,6 +2349,11 @@ def _build_decisions_and_invariants(
             elif _is_implementation_outcome_decision(candidate):
                 _append_memory_item(decisions, item)
             elif _is_open_architecture_question(candidate):
+                if (
+                    source in {"continuation_brief", "resolved_state", "recent_window_user"}
+                    and request_is_resolved
+                ):
+                    continue
                 _append_memory_item(open_questions, item)
             elif _is_invariant(candidate):
                 _append_memory_item(invariants, item)
@@ -2408,6 +2420,212 @@ def _implementation_outcome_sources(parsed: ParsedSession) -> list[tuple[str, st
                 )
             )
     return sources
+
+
+def _answer_outcome_sources(parsed: ParsedSession) -> list[tuple[str, str]]:
+    sources: list[tuple[str, str]] = []
+    for block in parsed.conversation_entries[-RECENT_ACTION_LOOKBACK:]:
+        if block.kind != "assistant":
+            continue
+        candidates = _answer_outcome_candidates_from_text(block.text)
+        if candidates:
+            sources.append(
+                (
+                    "answer_outcome",
+                    "\n".join(f"- {candidate}" for candidate in candidates),
+                )
+            )
+    return sources
+
+
+def _answer_outcome_candidates_from_text(text: str) -> list[str]:
+    if not _has_answer_outcome_signal(text):
+        return []
+
+    candidates: list[str] = []
+    active_label = ""
+    in_fence = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence or not line:
+            continue
+
+        heading = _answer_outcome_heading(line)
+        if heading:
+            active_label = heading
+            inline_candidate = _answer_outcome_inline_heading_candidate(line, heading)
+            if inline_candidate:
+                candidates.append(inline_candidate)
+            continue
+
+        if line.startswith("#"):
+            active_label = ""
+            continue
+
+        first_line_candidate = _answer_outcome_first_line_candidate(line)
+        if first_line_candidate:
+            candidates.append(first_line_candidate)
+            continue
+
+        list_item = _structural_list_item(line)
+        if not list_item:
+            continue
+        candidate = _answer_outcome_candidate(active_label, list_item)
+        if candidate:
+            candidates.append(candidate)
+
+    return candidates[:32]
+
+
+def _has_answer_outcome_signal(text: str) -> bool:
+    lowered = text.lower()
+    if (
+        "continue from a local extractive handoff" in lowered
+        or "first response contract" in lowered
+    ):
+        return False
+    markers = (
+        "mi recomendación",
+        "mi recomendacion",
+        "recommendation",
+        "recommended",
+        "conclusión",
+        "conclusion",
+        "entonces:",
+        "en resumen",
+        "bottom line",
+        "obligatorio:",
+        "recomendable:",
+        "conviene",
+        "yo lo dejaría",
+        "yo lo dejaria",
+        "está bien para hacerlo público",
+        "esta bien para hacerlo publico",
+        "bien para hacerlo público",
+        "bien para hacerlo publico",
+        "no veo secretos",
+        "lo único sensible",
+        "lo unico sensible",
+        "pii",
+        "noreply",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _answer_outcome_heading(line: str) -> str:
+    stripped = line.strip()
+    inline_prefix = re.match(r"^\**\s*([^:*]+):\**\s+.+$", stripped)
+    if inline_prefix:
+        prefix = inline_prefix.group(1).strip().lower()
+        if prefix in {
+            "mi recomendación",
+            "mi recomendacion",
+            "recommendation",
+            "recommended next step",
+            "conclusión",
+            "conclusion",
+            "en resumen",
+            "bottom line",
+            "entonces",
+        }:
+            if "recomend" in prefix or "recommend" in prefix:
+                return "Recommendation"
+            return "Conclusion"
+    looks_like_heading = stripped.startswith("#") or (
+        stripped.endswith(":") and not _is_memory_bullet_line(stripped)
+    )
+    if not looks_like_heading and not (stripped.startswith("**") and stripped.endswith("**")):
+        return ""
+    cleaned = stripped.strip("# ").strip()
+    cleaned = re.sub(r"^\*\*|\*\*$", "", cleaned).strip()
+    cleaned = cleaned.rstrip(":").strip()
+    lowered = cleaned.lower()
+    accepted = {
+        "mi recomendación": "Recommendation",
+        "mi recomendacion": "Recommendation",
+        "recommendation": "Recommendation",
+        "recommended next step": "Recommendation",
+        "conclusión": "Conclusion",
+        "conclusion": "Conclusion",
+        "en resumen": "Conclusion",
+        "bottom line": "Conclusion",
+        "entonces": "Conclusion",
+    }
+    return accepted.get(lowered, "")
+
+
+def _answer_outcome_inline_heading_candidate(line: str, heading: str) -> str:
+    cleaned = line.strip()
+    if not cleaned or cleaned.endswith(":"):
+        return ""
+    match = re.match(r"^\**\s*[^:*]+:\**\s*(.+)$", cleaned)
+    if not match:
+        return ""
+    candidate = match.group(1).strip()
+    return _answer_outcome_candidate(heading, candidate)
+
+
+def _answer_outcome_first_line_candidate(line: str) -> str:
+    cleaned = line.strip()
+    if _is_memory_bullet_line(cleaned):
+        return ""
+    lowered = cleaned.lower()
+    if not (
+        lowered.startswith(("sí,", "si,", "no ", "no,", "de hecho", "entonces"))
+        or lowered.startswith(("lo único sensible", "lo unico sensible"))
+        or lowered.startswith(("mi recomendación:", "mi recomendacion:", "recommendation:"))
+        or " está bien para hacerlo público" in lowered
+        or " esta bien para hacerlo publico" in lowered
+    ):
+        return ""
+    if not _has_answer_memory_signal(cleaned):
+        return ""
+    return _excerpt_text(f"Conclusion: {cleaned}", limit=240)
+
+
+def _answer_outcome_candidate(label: str, text: str) -> str:
+    cleaned = text.strip()
+    if not cleaned or _looks_like_validation_line(cleaned):
+        return ""
+    if cleaned.startswith("[") and "](" in cleaned:
+        return ""
+    if _looks_like_path_only_item(cleaned):
+        return ""
+    if not _has_answer_memory_signal(cleaned):
+        return ""
+    prefix = label or "Conclusion"
+    return _excerpt_text(f"{prefix}: {cleaned}", limit=240)
+
+
+def _has_answer_memory_signal(text: str) -> bool:
+    lowered = text.lower()
+    markers = (
+        "conviene",
+        "recomendable",
+        "obligatorio",
+        "no estrictamente",
+        "no es obligatorio",
+        "probablemente funcione",
+        "claridad de tipo",
+        "pid",
+        "centinela",
+        "warning",
+        "warnings",
+        "público",
+        "publico",
+        "secretos",
+        "sensible",
+        "pii",
+        "metadata de los commits",
+        "email real",
+        "noreply",
+        "reescribir",
+        "pushear",
+    )
+    return any(marker in lowered for marker in markers)
 
 
 def _implementation_outcome_candidates_from_text(text: str) -> list[str]:
@@ -2828,6 +3046,7 @@ def _memory_candidates_from_text(text: str) -> list[str]:
 def _memory_text_segments(text: str) -> list[str]:
     segments: list[str] = []
     paragraph: list[str] = []
+    in_fence = False
 
     def flush_paragraph() -> None:
         if paragraph:
@@ -2836,6 +3055,12 @@ def _memory_text_segments(text: str) -> list[str]:
 
     for raw_line in text.strip().splitlines():
         line = raw_line.strip()
+        if line.startswith("```"):
+            flush_paragraph()
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
         if not line:
             flush_paragraph()
             continue
@@ -2973,6 +3198,7 @@ def _has_memory_signal(text: str) -> bool:
         "open questions",
         "recommendation",
         "recommended next step",
+        "conclusion",
         "blocker",
         "blockers",
         "overclaiming",
@@ -2992,6 +3218,19 @@ def _has_memory_signal(text: str) -> bool:
         "not included",
         "follow-up:",
         "remaining",
+        "no estrictamente",
+        "obligatorio",
+        "recomendable",
+        "claridad de tipo",
+        "centinela",
+        "público",
+        "publico",
+        "secretos",
+        "sensible",
+        "pii",
+        "metadata de los commits",
+        "email real",
+        "noreply",
     )
     return any(marker in lowered for marker in markers)
 
@@ -3119,10 +3358,15 @@ def _is_decision(text: str) -> bool:
         "lo haria",
         "recommendation",
         "recommended next step",
+        "conclusion",
         "resolved during review",
         "implementation outcome",
         "behavior now",
         "what changed",
+        "público",
+        "publico",
+        "no estrictamente",
+        "recomendable",
     )
     return any(marker in lowered for marker in markers)
 
@@ -3162,6 +3406,11 @@ def _is_invariant(text: str) -> bool:
         "sin promoción",
         "sin promocion",
         "contract:",
+        "centinela",
+        "claridad de tipo",
+        "secretos",
+        "sensible",
+        "pii",
     )
     return any(marker in lowered for marker in markers)
 
@@ -3223,6 +3472,9 @@ def _is_open_architecture_question(text: str) -> bool:
         "caveat",
         "follow-up:",
         "remaining",
+        "email real",
+        "noreply",
+        "reescribir",
     )
     return any(marker in lowered for marker in markers)
 

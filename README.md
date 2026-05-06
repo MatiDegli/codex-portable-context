@@ -482,6 +482,10 @@ Handoffs also include a conservative `roadmap_evidence` layer. It discovers and
 cites repo-owned roadmap/status docs when they appear useful, but the current
 slice does not use them to rewrite the continuation brief or next action.
 
+Decision memory also captures explicit answer outcomes in English or Spanish,
+so answer-only sessions can preserve conclusions, recommendations, answered
+trade-offs, and publication/security caveats when they are stated clearly.
+
 If a source session lacks a usable cwd, handoff generation can infer the repo
 root from dominant absolute artifact paths in the transcript and then report the
 branch, HEAD, repo state, and repo-relative inspection targets. Inferred roots

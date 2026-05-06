@@ -1047,6 +1047,88 @@ def test_handoff_cli_extracts_spanish_implementation_outcome_memory(
     assert payload["decisions_and_invariants"]["confidence"] == "high"
 
 
+def test_handoff_cli_extracts_spanish_explanatory_answer_memory(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request="Pero el cast pid32 debe ir si o si?",
+        final_answer_after_request=True,
+        final_answer_message=(
+            "No estrictamente, pero conviene.\n\n"
+            "`-1` solo probablemente funcione, porque en C se convierte al tipo esperado.\n\n"
+            "Pero poner el cast:\n\n"
+            "```c\n"
+            "#define NOMUTEXOWNER ((pid32)-1)\n"
+            "```\n\n"
+            "tiene dos ventajas:\n"
+            "- deja explícito que ese centinela pertenece al mundo de los PID\n"
+            "- evita ambigüedades o warnings si más adelante comparás con variables `pid32`\n\n"
+            "Entonces:\n"
+            "- obligatorio: no\n"
+            "- recomendable: sí\n\n"
+            "Yo lo dejaría con cast por claridad de tipo."
+        ),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    memory = payload["decisions_and_invariants"]
+    all_statements = " ".join(
+        item["statement"]
+        for key in ("decisions", "invariants", "rejected_paths", "open_architecture_questions")
+        for item in memory[key]
+    )
+    assert "No estrictamente, pero conviene" in all_statements
+    assert "obligatorio: no" in all_statements
+    assert "claridad de tipo" in all_statements
+    assert any("answer_outcome" in item for item in memory["evidence"])
+    assert memory["confidence"] == "high"
+
+
+def test_handoff_cli_extracts_publication_safety_answer_memory(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request="Lo dejo como repo public en git o hay informacion sensible?",
+        final_answer_after_request=True,
+        final_answer_message=(
+            "Sí, el repo está **bien para hacerlo público en cuanto al contenido versionado**. "
+            "Revisé archivos y no veo secretos, configs reales, tokens, paths locales "
+            "hardcodeados ni datos sensibles operativos.\n\n"
+            "Lo único sensible/PII que sí aparece es la metadata de los commits.\n\n"
+            "Mi recomendación: **antes de pushear público, reescribir los commits con un "
+            "email noreply de GitHub**."
+        ),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    memory = payload["decisions_and_invariants"]
+    all_statements = " ".join(
+        item["statement"]
+        for key in ("decisions", "invariants", "rejected_paths", "open_architecture_questions")
+        for item in memory[key]
+    )
+    assert "bien para hacerlo público" in all_statements
+    assert "no veo secretos" in all_statements
+    assert "metadata de los commits" in all_statements
+    assert "email noreply" in all_statements
+    assert "Lo dejo como repo public" not in all_statements
+    assert "git config user.email" not in all_statements
+    assert any("answer_outcome" in item for item in memory["evidence"])
+    assert memory["confidence"] == "high"
+
+
 def test_handoff_cli_bootstrap_prompt_avoids_artifact_next_action(
     tmp_path: Path,
     capsys,

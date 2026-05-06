@@ -578,6 +578,32 @@ Acceptance checks:
 - Recommended inspection targets under the inferred repo render as relative
   paths such as `src/...`, `tests/...`, or docs paths.
 
+## Phase 5l: Explanatory Answer Outcome Memory
+
+Implementation status: implemented.
+
+Preserve durable conclusions from answer-only sessions that are not formal
+reviews or implementation summaries.
+
+Implementation guidance:
+
+- Extract high-signal conclusions, recommendations, and answered trade-offs from
+  assistant answers.
+- Support Spanish and English phrases such as `conviene`, `obligatorio`,
+  `recomendable`, `mi recomendación`, `conclusion`, and `recommendation`.
+- Preserve security/publication findings such as clean versioned content,
+  sensitive commit metadata, and noreply-email follow-ups.
+- Do not treat an already answered user question as a remaining open question.
+- Ignore fenced command blocks as strategic memory.
+
+Acceptance checks:
+
+- Spanish explanatory answers such as "not required but recommended" produce
+  `answer_outcome` memory.
+- Publication-safety answers preserve clean-content and PII/metadata risks.
+- Recent answered user questions do not displace the next action.
+- Handoff audit has no `weak` substantive sessions in the current sample.
+
 ## Phase 6: Provider-Agnostic Continuity Quality
 
 Implementation status: complete.
