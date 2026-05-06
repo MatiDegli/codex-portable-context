@@ -775,9 +775,115 @@ Acceptance checks:
   never included.
 - Audit can explain why repo evidence was included or skipped.
 
+### Phase 7b.5: Workstation Multi-Session Context Pack
+
+Implementation status: implemented.
+
+Add a derived, provider-neutral, multi-session advisory manifest for Workstation's
+`roadmap_decomposition_context_pack_v1` contract before enabling conservative
+repo-aware synthesis.
+
+Goal:
+
+- Let Workstation consume historical continuity context from more than one
+  session without reading provider raw state.
+- Preserve Workstation's repo-local authority boundary: repo-owned roadmap and
+  workflow files remain authoritative, while codex-sync output remains
+  historical advisory evidence.
+- Give roadmap planners/decomposers a compact, auditable view of relevant
+  sessions, decisions, invariants, open loops, changed artifacts, redaction
+  status, source availability, and prompt-compliance posture.
+- Keep the output portable across providers by depending on derived handoff
+  contracts rather than provider-specific session internals.
+
+Proposed interface:
+
+```bash
+codex-session-context-pack \
+  --out-dir .workstation/context/out \
+  --repo-root /path/to/repo \
+  --latest 5 \
+  --json
+```
+
+Preflight interface:
+
+```bash
+codex-session-context-pack \
+  --out-dir .workstation/context/out \
+  --repo-root /path/to/repo \
+  --latest 5 \
+  --preflight \
+  --json
+```
+
+Selection requirements:
+
+- Select multiple sessions, not only the latest single session.
+- Support filters for repo root, provider, session id/prefix, date window, and
+  derived text/metadata query.
+- Support an operator-curated sessions manifest for explicit multi-session
+  selection.
+- Default to `--latest 5` after filters, with deterministic ranking/reasons in
+  the manifest.
+
+Manifest requirements:
+
+- Include session ids, providers, derived source hashes, redaction status,
+  `available_sections`, `section_sources`, source-availability limitations,
+  prompt-compliance audit, source-contract audit, and ranking/reason metadata.
+- Include stable integration fields such as `status`, `advisory_only`,
+  `contract_id`, `selected_session_count`, `redaction_mode`, top-level
+  aggregate `source_hashes`, `blocked_reason`, `repair_guidance`, and
+  `expected_handoff_dir` when relevant.
+- Include compact derived sections for `decisions_and_invariants`,
+  `open_loops`, `changed_artifacts`, continuation brief, resolved state, and
+  roadmap/repo evidence when available.
+- Exclude raw transcript and transcript excerpts by default.
+- Make the authority boundary explicit:
+  - repo-local Workstation sources are authoritative
+  - historical session context is advisory
+  - no live resume is promised
+  - no auth, config, credentials, or runtime state are moved
+
+Safety model:
+
+- First slice is `derived-only`: it reads existing mirror index and handoff JSON
+  artifacts from `--out-dir`.
+- It does not regenerate handoffs, read `~/.codex`, read provider JSONL, contact
+  live sessions, or inspect credentials.
+- Any future handoff-generation mode must be explicit and separately audited.
+
+Implemented slice:
+
+- Added `codex-session-context-pack` as a new CLI entrypoint.
+- The command reads the derived mirror index and existing `handoffs/*.json`
+  artifacts only.
+- It supports repo root, provider, session id/prefix, date window, query,
+  redaction, operator-curated sessions manifest, and latest/ranked selection
+  filters.
+- It emits a JSON manifest with explicit authority boundaries, source hashes,
+  redaction status, `available_sections`, `section_sources`, compact bridge
+  sections, ranking reasons, source-contract audit, and prompt-compliance audit.
+- It fails closed when no existing handoff JSON matches, instead of reading raw
+  provider sessions or regenerating handoffs implicitly.
+- It emits structured JSON errors in `--json` mode and supports
+  `--preflight --json` to report exactly which derived handoff artifacts are
+  missing or malformed.
+
+Acceptance checks:
+
+- Workstation can consume the manifest as an advisory source inside
+  `roadmap_decomposition_context_pack_v1`.
+- Output is portable, redacted-capable, provider-neutral, and auditable.
+- Missing handoffs or malformed handoff JSON degrade through clear skipped
+  session/audit fields rather than silent synthesis.
+- Prompt compliance and source availability are preserved from the handoff layer.
+- The manifest never presents historical context as repo-local truth.
+
 ### Phase 7c: Conservative Repo-Aware Synthesis
 
-Implementation status: planned, blocked on Phase 7b audit results.
+Implementation status: planned, blocked on Phase 7b and Phase 7b.5 audit results.
 
 Allow repo evidence to influence the synthesized top layer only after the
 evidence pack proves stable on real sessions.

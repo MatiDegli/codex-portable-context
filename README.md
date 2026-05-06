@@ -511,6 +511,28 @@ suffix, so they do not overwrite the canonical handoff for the full session.
 
 Use `codex-session-handoff-audit --limit 20` to sample recent handoffs and check whether `Decisions / Invariants` is producing useful memory or falling back to `no_memory` / `low_confidence`.
 
+Use `codex-session-context-pack --repo-root /path/to/repo --latest 5 --json`
+to build a derived multi-session advisory manifest from existing
+`handoffs/*.json` artifacts. This is the Workstation-oriented surface for
+`roadmap_decomposition_context_pack_v1`: it selects multiple relevant sessions,
+includes source hashes, section availability/source maps, compact
+decisions/invariants/open loops/changed artifacts, redaction status, ranking
+reasons, and prompt/source-contract audit. It is `derived-only`: it does not
+regenerate handoffs, read raw provider logs, read live sessions, move
+auth/config/runtime state, or promise live resume.
+
+Useful Workstation integration flags:
+
+- `--preflight --json` reports missing or invalid derived handoff JSON before
+  building the full pack.
+- `--session-id <id-or-prefix>` selects explicit sessions.
+- `--sessions-manifest curated-sessions.json` reads operator-curated session ids
+  from a JSON list, `{ "session_ids": [...] }`, or
+  `{ "sessions": [{ "session_id": "..." }] }`.
+
+When `--json` is used, blocked runs emit structured JSON with `status`,
+`blocked_reason`, `repair_guidance`, and `expected_handoff_dir`.
+
 For older mirror outputs, path resolution can fall back to:
 
 - `metadata/<session-id>.json`
