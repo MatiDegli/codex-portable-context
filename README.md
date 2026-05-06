@@ -482,6 +482,13 @@ Handoffs also include a conservative `roadmap_evidence` layer. It discovers and
 cites repo-owned roadmap/status docs when they appear useful, but the current
 slice does not use them to rewrite the continuation brief or next action.
 
+The `repo_evidence` layer extends this with fail-closed repo inspection. It
+looks only at canonical, small repo-owned files such as `README.md`,
+`conventions.md`, agent instruction docs, roadmap/status docs, `package.json`,
+`pyproject.toml`, and CI workflows. Evidence is stored with confidence scores,
+but restart prompts include it only above the prompt threshold and with path
+attribution. It does not synthesize or override transcript-derived state.
+
 Decision memory also captures explicit answer outcomes in English or Spanish,
 so answer-only sessions can preserve conclusions, recommendations, answered
 trade-offs, and publication/security caveats when they are stated clearly.

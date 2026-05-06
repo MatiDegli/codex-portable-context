@@ -695,6 +695,122 @@ Acceptance checks:
 - Conflicts between transcript and roadmap are surfaced as open risks rather than silently resolved.
 - The audit can flag missing or stale roadmap evidence.
 
+### Phase 7b: Repo-Aware Evidence Pack
+
+Implementation status: implemented.
+
+Extend roadmap evidence into a broader, fail-closed repo evidence layer without
+letting noisy repo inspection regress restart prompt quality.
+
+Goal:
+
+- Inspect only small, canonical repo-owned files and git metadata.
+- Produce source-attributed evidence about project identity, workflow commands,
+  roadmap/status, validation surface, and commit freshness.
+- Keep all evidence out of synthesis by default.
+- Include evidence in restart prompts only when confidence is high and the
+  evidence is directly useful for re-entry.
+
+Canonical inputs:
+
+- `README.md`
+- `conventions.md`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/next_steps.md`
+- `docs/*roadmap*.md`
+- `docs/*status*.md`
+- `pyproject.toml`
+- `package.json`
+- `.github/workflows/*.yml`
+
+Fail-closed confidence model:
+
+- `repo_evidence.sources[*].confidence` is a score from `0.0` to `1.0`.
+- Evidence can be stored in JSON/Markdown at confidence `>= 0.50`.
+- Evidence can be included in restart prompts only at confidence `>= 0.75`.
+- Evidence can influence synthesized next action only at confidence `>= 0.90`
+  and after a separate synthesis phase is explicitly enabled.
+- Conflicting evidence must lower confidence and surface a conflict/risk instead
+  of overriding transcript-derived state.
+
+Prompt inclusion rules:
+
+- Include at most 3-5 compact bullets.
+- Every prompt bullet must cite a path.
+- Do not include generic headings without specific content.
+- Do not include evidence from generated handoff/mirror/output artifacts.
+- Do not include `.env`, `.vscode`, `out/`, `.agent-bridge`, build artifacts,
+  caches, local state, or paths with secrets/local machine data.
+- Do not infer intent from filenames alone.
+
+Initial implementation slice:
+
+- Add `repo_evidence` to handoff JSON and Markdown.
+- Populate it with conservative, source-attributed evidence only.
+- Keep `used_for_synthesis=false`.
+- Add `include_in_restart_prompt` only when high-confidence evidence exists.
+- Add audit visibility for whether repo evidence was found, included, or skipped
+  due to confidence/noise.
+
+Implemented slice:
+
+- `repo_evidence` reads only canonical repo-owned docs/configs/workflows.
+- Evidence is stored at confidence `>= 0.50`.
+- Restart prompt inclusion requires confidence `>= 0.75` plus an activation
+  reason such as freshness warning, roadmap context, inferred repo root, or
+  missing validation context.
+- `codex-session-handoff-audit` reports repo-evidence included/found/skipped
+  counts.
+- `used_for_synthesis=false` remains hard-coded for this phase.
+
+Acceptance checks:
+
+- Existing restart prompts remain prompt-compliant and do not grow noisy.
+- Low-confidence repo evidence is visible in JSON/Markdown but absent from the
+  restart prompt.
+- High-confidence validation commands or roadmap sources can appear in the
+  prompt with path attribution.
+- Generated artifacts, local IDE files, env files, and output directories are
+  never included.
+- Audit can explain why repo evidence was included or skipped.
+
+### Phase 7c: Conservative Repo-Aware Synthesis
+
+Implementation status: planned, blocked on Phase 7b audit results.
+
+Allow repo evidence to influence the synthesized top layer only after the
+evidence pack proves stable on real sessions.
+
+Activation requirements:
+
+- `repo_evidence` has confidence `>= 0.90`.
+- At least two independent signals agree, such as roadmap + commit delta, or
+  transcript + repo doc.
+- No unresolved conflict exists between transcript-derived state and repo docs.
+- Freshness warning or explicit user intent makes repo-current evidence relevant.
+
+Allowed effects:
+
+- refine `next_best_action`
+- surface a stale-roadmap conflict as an open risk
+- recommend validation commands from canonical project files
+
+Forbidden effects:
+
+- overwrite the latest resolved user request
+- fabricate roadmap decisions from file names alone
+- treat generated output as source of truth
+- bypass the first-response confirmation contract
+
+Acceptance checks:
+
+- Synthesis stays disabled by default until explicitly enabled.
+- When enabled, every synthesized field cites repo evidence.
+- Conflicts produce review-first prompts, not implementation prompts.
+- Audit can distinguish transcript-derived, repo-evidence-derived, and
+  synthesized fields.
+
 ## Validation Strategy
 
 Use real handoffs as fixtures for qualitative and regression checks.

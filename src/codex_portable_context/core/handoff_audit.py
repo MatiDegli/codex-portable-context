@@ -121,6 +121,15 @@ def render_handoff_audit(report: dict[str, Any]) -> str:
             error=summary.get("source_contract_counts", {}).get("error", 0),
         ),
         (
+            "Repo evidence: included={included}, found={found}, skipped={skipped}, "
+            "unavailable={unavailable}."
+        ).format(
+            included=summary.get("repo_evidence_counts", {}).get("included", 0),
+            found=summary.get("repo_evidence_counts", {}).get("found", 0),
+            skipped=summary.get("repo_evidence_counts", {}).get("skipped", 0),
+            unavailable=summary.get("repo_evidence_counts", {}).get("unavailable", 0),
+        ),
+        (
             "Purpose: substantive={substantive}, review={review}, active={active}, "
             "bootstrap={bootstrap}, transport={transport}, noise={noise}."
         ).format(
@@ -292,6 +301,7 @@ def _audit_entry(entry: MirrorEntry, *, out_dir: Path, generate: bool) -> dict[s
     purpose = _session_purpose(payload=payload, title=entry_title(entry), total=total)
     prompt_compliance = _prompt_compliance(_restart_prompt_text(payload))
     source_contract_compliance = _source_contract_compliance(payload)
+    repo_evidence = _repo_evidence_audit(payload)
     flags = _quality_flags(
         payload=payload,
         total=total,
@@ -316,6 +326,7 @@ def _audit_entry(entry: MirrorEntry, *, out_dir: Path, generate: bool) -> dict[s
         "sources": sources,
         "prompt_compliance": prompt_compliance,
         "source_contract_compliance": source_contract_compliance,
+        "repo_evidence": repo_evidence,
         "flags": flags,
         "quality_gates": flags,
         "readiness": readiness,
@@ -340,6 +351,7 @@ def _error_item(
         "sources": [],
         "prompt_compliance": _error_prompt_compliance(),
         "source_contract_compliance": _error_source_contract_compliance(),
+        "repo_evidence": _error_repo_evidence_audit(),
         "flags": flags,
         "quality_gates": flags,
         "readiness": "error",
@@ -447,6 +459,14 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         status: 0
         for status in SOURCE_CONTRACT_STATUS_VALUES
     }
+    repo_evidence_counts = {
+        "included": 0,
+        "found": 0,
+        "skipped": 0,
+        "unavailable": 0,
+        "none": 0,
+        "error": 0,
+    }
     total_memory = 0
     covered = 0
     errored = 0
@@ -470,6 +490,20 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         source_contract_counts[
             source_status if source_status in source_contract_counts else "error"
         ] += 1
+        repo_evidence = _as_dict(item.get("repo_evidence"))
+        repo_status = str(repo_evidence.get("status") or "error")
+        if repo_evidence.get("include_in_restart_prompt"):
+            repo_evidence_counts["included"] += 1
+        if repo_status == "found":
+            repo_evidence_counts["found"] += 1
+            if not repo_evidence.get("include_in_restart_prompt"):
+                repo_evidence_counts["skipped"] += 1
+        elif repo_status == "unavailable":
+            repo_evidence_counts["unavailable"] += 1
+        elif repo_status == "none":
+            repo_evidence_counts["none"] += 1
+        else:
+            repo_evidence_counts["error"] += 1
         total = int(item.get("total_memory_items") or 0)
         total_memory += total
         if total > 0:
@@ -490,6 +524,7 @@ def _audit_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         "purpose_counts": purpose_counts,
         "prompt_compliance_counts": prompt_compliance_counts,
         "source_contract_counts": source_contract_counts,
+        "repo_evidence_counts": repo_evidence_counts,
     }
 
 
@@ -502,6 +537,33 @@ def _memory_sources(memory: dict[str, Any]) -> list[str]:
             if source and source not in sources:
                 sources.append(source)
     return sources
+
+
+def _repo_evidence_audit(payload: dict[str, Any]) -> dict[str, Any]:
+    evidence = _as_dict(payload.get("repo_evidence"))
+    sources = [_as_dict(source) for source in _as_list(evidence.get("sources"))]
+    prompt_sources = [
+        source for source in sources if source.get("include_in_restart_prompt")
+    ]
+    return {
+        "status": str(evidence.get("status") or "error"),
+        "source_count": len(sources),
+        "prompt_source_count": len(prompt_sources),
+        "include_in_restart_prompt": bool(evidence.get("include_in_restart_prompt")),
+        "inclusion_reason": str(evidence.get("inclusion_reason") or "none"),
+        "max_confidence": evidence.get("max_confidence") or 0.0,
+    }
+
+
+def _error_repo_evidence_audit() -> dict[str, Any]:
+    return {
+        "status": "error",
+        "source_count": 0,
+        "prompt_source_count": 0,
+        "include_in_restart_prompt": False,
+        "inclusion_reason": "none",
+        "max_confidence": 0.0,
+    }
 
 
 def _quality_flags(
@@ -638,6 +700,8 @@ def _looks_like_bootstrap_or_ack(text: str) -> bool:
         "bootstrap",
         "acknowledge readiness",
         "ack readiness",
+        "confirm restart mode",
+        "confirm handoff mode",
         "reply exactly",
         "respond exactly",
         "readiness for dispatch",

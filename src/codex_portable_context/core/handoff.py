@@ -42,6 +42,7 @@ SOURCE_SECTION_KEYS = (
     "current_state",
     "continuity_freshness",
     "roadmap_evidence",
+    "repo_evidence",
     "changed_artifacts",
     "decisions_and_invariants",
     "reentry_posture",
@@ -101,6 +102,39 @@ ROADMAP_SIGNAL_MARKERS = (
     "prioridad",
     "siguiente paso",
 )
+
+REPO_EVIDENCE_STORE_THRESHOLD = 0.50
+REPO_EVIDENCE_PROMPT_THRESHOLD = 0.75
+REPO_EVIDENCE_SYNTHESIS_THRESHOLD = 0.90
+REPO_EVIDENCE_KNOWN_RELATIVE_PATHS = (
+    "README.md",
+    "conventions.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "docs/next_steps.md",
+)
+REPO_EVIDENCE_GLOB_PATTERNS = (
+    "docs/*roadmap*.md",
+    "docs/*status*.md",
+    ".github/workflows/*.yml",
+    ".github/workflows/*.yaml",
+    "pyproject.toml",
+    "package.json",
+)
+REPO_EVIDENCE_EXCLUDED_PARTS = {
+    ".agent-bridge",
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    ".vscode",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "out",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -483,6 +517,7 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
     compaction_summaries = _as_list(handoff.get("compaction_summaries"))
     linked_child_sessions = _as_list(handoff.get("linked_child_sessions"))
     roadmap_evidence = _as_dict(handoff.get("roadmap_evidence"))
+    repo_evidence = _as_dict(handoff.get("repo_evidence"))
     changed_artifacts = _as_dict(handoff.get("changed_artifacts"))
     decisions_and_invariants = _as_dict(handoff.get("decisions_and_invariants"))
     transcript_link = _handoff_relpath(_string(artifacts.get("markdown_relpath")))
@@ -531,6 +566,8 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
     ] or ["- none"]
     roadmap_sources = _as_list(roadmap_evidence.get("sources"))
     roadmap_source_lines = _roadmap_evidence_markdown_lines(roadmap_sources)
+    repo_sources = _as_list(repo_evidence.get("sources"))
+    repo_source_lines = _repo_evidence_markdown_lines(repo_sources)
 
     lines: list[str] = [
         f"# Handoff: {session.get('title') or handoff.get('session_id')}",
@@ -588,6 +625,25 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         "### Sources",
         "",
         *roadmap_source_lines,
+        "",
+        "## Repo Evidence",
+        "",
+        f"- Status: `{repo_evidence.get('status') or 'unknown'}`",
+        f"- Summary: {repo_evidence.get('summary') or 'n/a'}",
+        f"- Max confidence: `{repo_evidence.get('max_confidence') or 0.0}`",
+        (
+            "- Included in restart prompt: "
+            f"`{'yes' if repo_evidence.get('include_in_restart_prompt') else 'no'}`"
+        ),
+        (
+            "- Used for synthesis: "
+            f"`{'yes' if repo_evidence.get('used_for_synthesis') else 'no'}`"
+        ),
+        f"- Inclusion reason: `{repo_evidence.get('inclusion_reason') or 'none'}`",
+        "",
+        "### Sources",
+        "",
+        *repo_source_lines,
         "",
         "## Continuation Brief",
         "",
@@ -990,6 +1046,15 @@ def _build_handoff_payload(
         redacted=redacted,
         context=redaction_context,
     )
+    repo_evidence = _build_repo_evidence(
+        repo_state=repo_state,
+        roadmap_evidence=roadmap_evidence,
+        continuity_freshness=continuity_freshness,
+        open_loops=open_loops,
+        resolved_state=resolved_state,
+        redacted=redacted,
+        context=redaction_context,
+    )
     decisions_and_invariants = _build_decisions_and_invariants(
         parsed=parsed,
         continuation_brief=continuation_brief,
@@ -1040,6 +1105,7 @@ def _build_handoff_payload(
         reentry_posture=reentry_posture,
         continuity_freshness=continuity_freshness,
         roadmap_evidence=roadmap_evidence,
+        repo_evidence=repo_evidence,
         changed_artifacts=changed_artifacts,
         decisions_and_invariants=decisions_and_invariants,
         linked_child_sessions=linked_child_sessions,
@@ -1079,6 +1145,7 @@ def _build_handoff_payload(
         "current_state": current_state,
         "continuity_freshness": continuity_freshness,
         "roadmap_evidence": roadmap_evidence,
+        "repo_evidence": repo_evidence,
         "changed_artifacts": changed_artifacts,
         "decisions_and_invariants": decisions_and_invariants,
         "reentry_posture": reentry_posture,
@@ -1232,6 +1299,7 @@ def _source_section_sources(
         "current_state": bridge_source,
         "continuity_freshness": "derived_mirror",
         "roadmap_evidence": "derived_mirror",
+        "repo_evidence": "derived_mirror",
         "changed_artifacts": bridge_source,
         "decisions_and_invariants": bridge_source,
         "reentry_posture": "derived_mirror",
@@ -1586,6 +1654,457 @@ def _roadmap_activation_reason(
         return "long_session"
 
     return ""
+
+
+def _build_repo_evidence(
+    *,
+    repo_state: dict[str, Any],
+    roadmap_evidence: dict[str, Any],
+    continuity_freshness: dict[str, str],
+    open_loops: dict[str, str],
+    resolved_state: dict[str, str],
+    redacted: bool,
+    context: RedactionContext,
+) -> dict[str, Any]:
+    repo_root = _string(repo_state.get("repo_root"))
+    if not repo_root:
+        return _empty_repo_evidence(
+            status="unavailable",
+            summary="Repo root was unavailable, so repo evidence was not scanned.",
+        )
+
+    root = Path(repo_root).expanduser()
+    if not root.is_dir():
+        return _empty_repo_evidence(
+            status="unavailable",
+            summary="Repo root does not exist locally, so repo evidence was not scanned.",
+        )
+
+    sources = _repo_evidence_sources(root=root, redacted=redacted, context=context)
+    if not sources:
+        return _empty_repo_evidence(
+            status="none",
+            summary="No conservative repo evidence sources passed the storage threshold.",
+        )
+
+    inclusion_reason = _repo_evidence_inclusion_reason(
+        repo_state=repo_state,
+        roadmap_evidence=roadmap_evidence,
+        continuity_freshness=continuity_freshness,
+        open_loops=open_loops,
+        resolved_state=resolved_state,
+    )
+    prompt_paths = _repo_evidence_prompt_paths(sources, inclusion_reason=inclusion_reason)
+    prompt_path_set = set(prompt_paths)
+    marked_sources = [
+        {
+            **source,
+            "include_in_restart_prompt": source["path"] in prompt_path_set,
+        }
+        for source in sources
+    ]
+    max_confidence = max(float(source.get("confidence") or 0.0) for source in sources)
+    return {
+        "status": "found",
+        "summary": (
+            f"Found {len(sources)} conservative repo evidence source(s). "
+            "This slice stores attributed evidence and keeps synthesis disabled."
+        ),
+        "sources": marked_sources,
+        "recommended_inspection_order": [source["path"] for source in marked_sources[:8]],
+        "prompt_sources": prompt_paths,
+        "inclusion_reason": inclusion_reason,
+        "max_confidence": round(max_confidence, 2),
+        "store_threshold": REPO_EVIDENCE_STORE_THRESHOLD,
+        "prompt_threshold": REPO_EVIDENCE_PROMPT_THRESHOLD,
+        "synthesis_threshold": REPO_EVIDENCE_SYNTHESIS_THRESHOLD,
+        "include_in_restart_prompt": bool(prompt_paths),
+        "used_for_synthesis": False,
+    }
+
+
+def _empty_repo_evidence(*, status: str, summary: str) -> dict[str, Any]:
+    return {
+        "status": status,
+        "summary": summary,
+        "sources": [],
+        "recommended_inspection_order": [],
+        "prompt_sources": [],
+        "inclusion_reason": "none",
+        "max_confidence": 0.0,
+        "store_threshold": REPO_EVIDENCE_STORE_THRESHOLD,
+        "prompt_threshold": REPO_EVIDENCE_PROMPT_THRESHOLD,
+        "synthesis_threshold": REPO_EVIDENCE_SYNTHESIS_THRESHOLD,
+        "include_in_restart_prompt": False,
+        "used_for_synthesis": False,
+    }
+
+
+def _repo_evidence_sources(
+    *,
+    root: Path,
+    redacted: bool,
+    context: RedactionContext,
+) -> list[dict[str, Any]]:
+    sources: list[dict[str, Any]] = []
+    for path in _candidate_repo_evidence_paths(root):
+        source = _repo_evidence_source_from_path(path, root=root)
+        if not source:
+            continue
+        if float(source.get("confidence") or 0.0) < REPO_EVIDENCE_STORE_THRESHOLD:
+            continue
+        if redacted:
+            source = {
+                **source,
+                "path": redact_text(source["path"], context).text,
+                "excerpt": redact_text(source["excerpt"], context).text,
+            }
+        sources.append(source)
+        if len(sources) >= 12:
+            break
+    return sources
+
+
+def _candidate_repo_evidence_paths(root: Path) -> list[Path]:
+    candidates: list[Path] = []
+
+    def add(path: Path) -> None:
+        if (
+            path.is_file()
+            and _is_safe_repo_evidence_path(path, root=root)
+            and path not in candidates
+        ):
+            candidates.append(path)
+
+    for relpath in REPO_EVIDENCE_KNOWN_RELATIVE_PATHS:
+        add(root / relpath)
+
+    for pattern in REPO_EVIDENCE_GLOB_PATTERNS:
+        for path in sorted(root.glob(pattern)):
+            add(path)
+
+    return candidates
+
+
+def _is_safe_repo_evidence_path(path: Path, *, root: Path) -> bool:
+    try:
+        relpath = path.relative_to(root)
+    except ValueError:
+        return False
+    parts = set(relpath.parts)
+    if parts & REPO_EVIDENCE_EXCLUDED_PARTS:
+        return False
+    rendered = relpath.as_posix()
+    lowered = rendered.lower()
+    if lowered.endswith((".env", ".vsix")) or ".env." in lowered:
+        return False
+    if any(part.startswith(".") and part not in {".github"} for part in relpath.parts):
+        return False
+    try:
+        if path.stat().st_size > 180_000:
+            return False
+    except OSError:
+        return False
+    return True
+
+
+def _repo_evidence_source_from_path(path: Path, *, root: Path) -> dict[str, Any]:
+    try:
+        relpath = path.relative_to(root).as_posix()
+    except ValueError:
+        return {}
+
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")[:120_000]
+    except OSError:
+        return {}
+
+    if relpath == "package.json":
+        return _package_json_repo_evidence(relpath=relpath, text=text)
+    if relpath == "pyproject.toml":
+        return _pyproject_repo_evidence(relpath=relpath, text=text)
+    if relpath.startswith(".github/workflows/"):
+        return _workflow_repo_evidence(relpath=relpath, text=text)
+
+    kind = _repo_evidence_kind(relpath)
+    signals = _repo_evidence_signals(text, relpath)
+    excerpt = _repo_evidence_excerpt(text, kind=kind)
+    confidence = _repo_evidence_confidence(kind=kind, signals=signals, excerpt=excerpt)
+    if not excerpt or not signals:
+        return {}
+    return {
+        "path": relpath,
+        "kind": kind,
+        "reason": _repo_evidence_reason(kind),
+        "confidence": confidence,
+        "signals": signals[:6],
+        "excerpt": excerpt,
+    }
+
+
+def _repo_evidence_kind(path: str) -> str:
+    lowered = path.lower()
+    if lowered in {"agents.md", "claude.md"}:
+        return "agent_instructions"
+    if lowered == "conventions.md":
+        return "conventions"
+    if "next" in lowered and "step" in lowered:
+        return "next_steps"
+    if "roadmap" in lowered:
+        return "roadmap"
+    if "status" in lowered:
+        return "status"
+    if lowered == "readme.md":
+        return "project_overview"
+    return "repo_doc"
+
+
+def _repo_evidence_reason(kind: str) -> str:
+    return {
+        "agent_instructions": "canonical_agent_instructions",
+        "conventions": "canonical_repo_conventions",
+        "next_steps": "canonical_next_steps",
+        "roadmap": "repo_roadmap",
+        "status": "repo_status",
+        "project_overview": "repo_readme",
+        "workflow_validation": "ci_validation_surface",
+        "package_scripts": "package_validation_surface",
+        "python_project_config": "python_project_config",
+    }.get(kind, "repo_doc")
+
+
+def _repo_evidence_signals(text: str, path: str) -> list[str]:
+    lowered = f"{path}\n{text}".lower()
+    markers = (
+        "source of truth",
+        "current priority",
+        "next step",
+        "next steps",
+        "roadmap",
+        "status",
+        "validation",
+        "test",
+        "pytest",
+        "ruff",
+        "mypy",
+        "npm test",
+        "pnpm test",
+        "vitest",
+        "conventions",
+        "must",
+        "must not",
+        "do not",
+        "debe",
+        "no debe",
+        "architecture",
+        "workflow",
+        "ci",
+    )
+    return [marker for marker in markers if marker in lowered]
+
+
+def _repo_evidence_excerpt(text: str, *, kind: str) -> str:
+    markers = (
+        "source of truth",
+        "current priority",
+        "next step",
+        "next steps",
+        "roadmap",
+        "status",
+        "validation",
+        "pytest",
+        "ruff",
+        "mypy",
+        "must ",
+        "must not",
+        "do not",
+        "debe",
+        "no debe",
+    )
+    fallback = ""
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        line = stripped.strip("-* ")
+        if not line or line in {"---", "```"}:
+            continue
+        if _is_generic_roadmap_heading(line):
+            continue
+        if not fallback and kind in {"project_overview", "repo_doc"}:
+            fallback = line
+        lowered = line.lower()
+        if any(marker in lowered for marker in markers):
+            return _excerpt_text(line, limit=220)
+    return _excerpt_text(fallback, limit=220) if fallback else ""
+
+
+def _repo_evidence_confidence(*, kind: str, signals: list[str], excerpt: str) -> float:
+    if not signals or not excerpt:
+        return 0.0
+    if kind in {"next_steps", "roadmap", "status"}:
+        return 0.85
+    if kind in {"agent_instructions", "conventions"}:
+        return 0.80
+    if kind in {"workflow_validation", "package_scripts"}:
+        return 0.85
+    if kind == "python_project_config":
+        return 0.70
+    if kind == "project_overview":
+        return 0.60 if len(signals) < 2 else 0.70
+    return 0.55
+
+
+def _workflow_repo_evidence(*, relpath: str, text: str) -> dict[str, Any]:
+    run_lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("- run:"):
+            command = line.split("- run:", 1)[1].strip()
+        elif line.startswith("run:"):
+            command = line.split("run:", 1)[1].strip()
+        else:
+            continue
+        if _looks_like_validation_command(command):
+            run_lines.append(command)
+    if not run_lines:
+        return {}
+    excerpt = "; ".join(run_lines[:3])
+    return {
+        "path": relpath,
+        "kind": "workflow_validation",
+        "reason": _repo_evidence_reason("workflow_validation"),
+        "confidence": 0.85,
+        "signals": ["workflow", "validation"],
+        "excerpt": _excerpt_text(excerpt, limit=220),
+    }
+
+
+def _package_json_repo_evidence(*, relpath: str, text: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    scripts = payload.get("scripts")
+    if not isinstance(scripts, dict):
+        return {}
+    interesting: list[str] = []
+    for name, command in scripts.items():
+        if not isinstance(name, str) or not isinstance(command, str):
+            continue
+        if _is_validation_script_name(name) or _looks_like_validation_command(command):
+            interesting.append(f"{name}: {command}")
+    if not interesting:
+        return {}
+    return {
+        "path": relpath,
+        "kind": "package_scripts",
+        "reason": _repo_evidence_reason("package_scripts"),
+        "confidence": 0.85,
+        "signals": ["package scripts", "validation"],
+        "excerpt": _excerpt_text("; ".join(interesting[:4]), limit=220),
+    }
+
+
+def _pyproject_repo_evidence(*, relpath: str, text: str) -> dict[str, Any]:
+    interesting: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        lowered = line.lower()
+        if lowered.startswith(("[tool.pytest", "[tool.ruff", "[tool.mypy", "[project.scripts]")):
+            interesting.append(line)
+    if not interesting:
+        return {}
+    return {
+        "path": relpath,
+        "kind": "python_project_config",
+        "reason": _repo_evidence_reason("python_project_config"),
+        "confidence": 0.70,
+        "signals": ["python project config", "validation"],
+        "excerpt": _excerpt_text("; ".join(interesting[:4]), limit=220),
+    }
+
+
+def _is_validation_script_name(name: str) -> bool:
+    lowered = name.lower()
+    return any(marker in lowered for marker in ("test", "lint", "typecheck", "validate", "check"))
+
+
+def _looks_like_validation_command(command: str) -> bool:
+    lowered = command.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "pytest",
+            "ruff",
+            "mypy",
+            "npm test",
+            "pnpm test",
+            "yarn test",
+            "vitest",
+            "eslint",
+            "tsc",
+            "cargo test",
+            "go test",
+        )
+    )
+
+
+def _repo_evidence_inclusion_reason(
+    *,
+    repo_state: dict[str, Any],
+    roadmap_evidence: dict[str, Any],
+    continuity_freshness: dict[str, str],
+    open_loops: dict[str, str],
+    resolved_state: dict[str, str],
+) -> str:
+    freshness_status = _string(continuity_freshness.get("status"))
+    if freshness_status.startswith("stale_"):
+        return "freshness_warning"
+    if roadmap_evidence.get("include_in_restart_prompt"):
+        return "roadmap_context_needed"
+    if _string(repo_state.get("repo_root_source")) == "inferred_from_artifact_paths":
+        return "inferred_repo_context"
+    if _string(open_loops.get("pending_validation")) != "none":
+        return "validation_context_needed"
+    if _is_missing_validation_text(_string(resolved_state.get("validation_summary"))):
+        return "validation_context_needed"
+    return "none"
+
+
+def _repo_evidence_prompt_paths(
+    sources: list[dict[str, Any]],
+    *,
+    inclusion_reason: str,
+) -> list[str]:
+    if inclusion_reason == "none":
+        return []
+    allowed_kinds = _repo_evidence_prompt_allowed_kinds(inclusion_reason)
+    paths: list[str] = []
+    for source in sources:
+        if len(paths) >= 5:
+            break
+        if float(source.get("confidence") or 0.0) < REPO_EVIDENCE_PROMPT_THRESHOLD:
+            continue
+        if source.get("kind") not in allowed_kinds:
+            continue
+        path = _string(source.get("path"))
+        if path:
+            paths.append(path)
+    return paths
+
+
+def _repo_evidence_prompt_allowed_kinds(inclusion_reason: str) -> set[str]:
+    if inclusion_reason in {"freshness_warning", "roadmap_context_needed"}:
+        return {"next_steps", "roadmap", "status"}
+    if inclusion_reason == "validation_context_needed":
+        return {"agent_instructions", "conventions", "workflow_validation", "package_scripts"}
+    if inclusion_reason == "inferred_repo_context":
+        return {"agent_instructions", "conventions", "next_steps", "roadmap", "status"}
+    return set()
+
+
+def _is_missing_validation_text(text: str) -> bool:
+    lowered = text.lower().strip()
+    return not lowered or lowered.startswith("no recent validation signal")
 
 
 def _handoff_session_updated_at(
@@ -2281,6 +2800,22 @@ def _roadmap_evidence_markdown_lines(items: list[Any]) -> list[str]:
             suffix_parts.append(f"excerpt: {excerpt}")
         suffix = f" - {'; '.join(suffix_parts)}" if suffix_parts else ""
         lines.append(f"- `{path}` (`{reason}`){suffix}")
+    return lines
+
+
+def _repo_evidence_markdown_lines(items: list[Any]) -> list[str]:
+    if not items:
+        return ["- none"]
+    lines: list[str] = []
+    for item in items[:10]:
+        source = _as_dict(item)
+        path = _string(source.get("path")) or "unknown"
+        kind = _string(source.get("kind")) or "unknown"
+        confidence = source.get("confidence")
+        excerpt = _string(source.get("excerpt"))
+        prompt_flag = "prompt" if source.get("include_in_restart_prompt") else "evidence"
+        suffix = f" - {excerpt}" if excerpt else ""
+        lines.append(f"- `{path}` (`{kind}`, `{confidence}`, `{prompt_flag}`){suffix}")
     return lines
 
 
@@ -3524,6 +4059,7 @@ def _build_restart_prompt(
     reentry_posture: dict[str, Any],
     continuity_freshness: dict[str, str],
     roadmap_evidence: dict[str, Any],
+    repo_evidence: dict[str, Any],
     changed_artifacts: dict[str, Any],
     decisions_and_invariants: dict[str, Any],
     linked_child_sessions: list[dict[str, str]],
@@ -3564,6 +4100,7 @@ def _build_restart_prompt(
     )
     snapshot_lines = _restart_prompt_snapshot_lines(artifacts)
     roadmap_lines = _restart_prompt_roadmap_lines(roadmap_evidence)
+    repo_evidence_lines = _restart_prompt_repo_evidence_lines(repo_evidence)
     repo_root_source = _string(artifacts.get("repo_root_source"))
     repo_root_source_lines = (
         [f"Repo root source: {repo_root_source}"]
@@ -3632,6 +4169,7 @@ def _build_restart_prompt(
         *inspection_lines,
         "",
         *roadmap_lines,
+        *repo_evidence_lines,
         "Decisions and invariants:",
         "- Decisions:",
         *decision_lines,
@@ -3756,6 +4294,35 @@ def _restart_prompt_roadmap_lines(roadmap_evidence: dict[str, Any]) -> list[str]
         excerpt = _string(item.get("excerpt"))
         suffix = f" - {excerpt}" if excerpt else ""
         lines.append(f"  - {path} ({reason}){suffix}")
+    lines.append("")
+    return lines
+
+
+def _restart_prompt_repo_evidence_lines(repo_evidence: dict[str, Any]) -> list[str]:
+    if not repo_evidence.get("include_in_restart_prompt"):
+        return []
+    sources = [
+        _as_dict(source)
+        for source in _as_list(repo_evidence.get("sources"))
+        if _as_dict(source).get("include_in_restart_prompt")
+    ]
+    if not sources:
+        return []
+
+    lines = [
+        "Repo evidence:",
+        "- Scope: high-confidence repo evidence only; review before acting.",
+        "- Used for synthesis: no",
+        f"- Inclusion reason: {repo_evidence.get('inclusion_reason') or 'unknown'}",
+        "- Sources:",
+    ]
+    for source in sources[:5]:
+        path = _string(source.get("path")) or "unknown"
+        kind = _string(source.get("kind")) or "unknown"
+        confidence = source.get("confidence")
+        excerpt = _string(source.get("excerpt"))
+        suffix = f" - {excerpt}" if excerpt else ""
+        lines.append(f"  - {path} ({kind}, confidence {confidence}){suffix}")
     lines.append("")
     return lines
 

@@ -36,6 +36,8 @@ If the original local source session file is still available through `metadata.s
   newer than the exported conversation context
 - roadmap evidence discovery that cites repo-owned roadmap/status docs without
   using them for synthesis yet
+- repo evidence discovery that reads only canonical, small repo files and uses
+  confidence thresholds before adding anything to a restart prompt
 - inferred repo metadata from dominant absolute artifact paths when the
   original session cwd is missing or stale
 - durable decisions, invariants, rejected paths, and open architecture questions
@@ -121,6 +123,15 @@ repo-owned roadmap or status documents such as `docs/next_steps.md`, roadmap
 docs, strategy docs, decision docs, and status docs. The current implementation
 does not use those docs to rewrite the brief, decisions, or next action; it only
 cites sources and marks `used_for_synthesis=false`.
+
+`Repo Evidence` is broader but more gated. It scans only canonical repo-owned
+files such as `README.md`, `conventions.md`, `AGENTS.md`, `CLAUDE.md`,
+`docs/next_steps.md`, roadmap/status docs, `package.json`, `pyproject.toml`,
+and CI workflow files. Evidence is stored only when it passes a conservative
+confidence threshold. Restart prompts include repo evidence only when a higher
+prompt threshold is met and a re-entry reason exists, such as a freshness
+warning, roadmap context, inferred repo root, or missing validation context.
+Repo evidence always marks `used_for_synthesis=false`.
 
 When session metadata does not expose a usable cwd, handoff generation can infer
 the repo root from dominant absolute paths mentioned in recent transcript,

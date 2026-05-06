@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import subprocess
 from pathlib import Path
 
 from codex_portable_context.cli.handoff import main
@@ -31,6 +32,7 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     assert payload["source_availability"]["available_sections"]["restart_prompt"] is True
     assert payload["source_availability"]["available_sections"]["continuity_freshness"] is True
     assert payload["source_availability"]["available_sections"]["roadmap_evidence"] is True
+    assert payload["source_availability"]["available_sections"]["repo_evidence"] is True
     assert payload["source_availability"]["available_sections"]["recent_window"] is True
     assert payload["source_availability"]["available_sections"]["recent_tool_activity"] is True
     assert payload["session"]["last_substantive_user_request"] == "Why is the IDE output empty?"
@@ -62,6 +64,7 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     assert "run_commands" in payload["reentry_posture"]["forbidden_first_turn_actions"]
     assert payload["decisions_and_invariants"]["confidence"] in {"low", "medium", "high"}
     assert payload["roadmap_evidence"]["used_for_synthesis"] is False
+    assert payload["repo_evidence"]["used_for_synthesis"] is False
     changed_paths = {item["path"]: item for item in payload["changed_artifacts"]["changed_paths"]}
     assert changed_paths["README.md"]["source"] == "tool_output_updated_files"
     assert "README.md" in payload["changed_artifacts"]["recommended_inspection_order"]
@@ -427,6 +430,52 @@ def test_handoff_cli_discovers_roadmap_evidence_without_synthesis(
     assert any("roadmap" in path for path in source_paths)
     assert "Roadmap evidence:" in payload["restart_prompt"]["text"]
     assert "Used for synthesis: no" in payload["restart_prompt"]["text"]
+
+
+def test_handoff_cli_discovers_repo_evidence_with_prompt_thresholds(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    target_repo = build_repo_evidence_fixture(tmp_path)
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        second_cwd=str(target_repo),
+        wrapped_request="Compare this restart prompt with the current roadmap.",
+        final_answer_after_request=True,
+        final_answer_message=(
+            "Recommendation:\n"
+            "- Use repo evidence as attribution only before synthesis is implemented."
+        ),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "session-5678"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    evidence = payload["repo_evidence"]
+    source_paths = {source["path"] for source in evidence["sources"]}
+    prompt_source_paths = {
+        source["path"]
+        for source in evidence["sources"]
+        if source["include_in_restart_prompt"]
+    }
+
+    assert evidence["status"] == "found"
+    assert evidence["used_for_synthesis"] is False
+    assert evidence["include_in_restart_prompt"] is True
+    assert evidence["prompt_threshold"] == 0.75
+    assert evidence["synthesis_threshold"] == 0.9
+    assert evidence["inclusion_reason"] in {"freshness_warning", "roadmap_context_needed"}
+    assert "docs/next_steps.md" in source_paths
+    assert "conventions.md" in source_paths
+    assert ".github/workflows/ci.yml" in source_paths
+    assert "docs/next_steps.md" in prompt_source_paths
+    assert "README.md" not in prompt_source_paths
+    assert "Repo evidence:" in payload["restart_prompt"]["text"]
+    assert "docs/next_steps.md" in payload["restart_prompt"]["text"]
+    assert "Used for synthesis: no" in payload["restart_prompt"]["text"]
+    assert ".env" not in payload["restart_prompt"]["text"]
 
 
 def test_handoff_cli_warns_when_newer_same_cwd_session_exists(
@@ -1242,6 +1291,7 @@ def test_handoff_cli_uses_same_bridge_contract_for_claude_code(
         "current_state",
         "continuity_freshness",
         "roadmap_evidence",
+        "repo_evidence",
         "changed_artifacts",
         "decisions_and_invariants",
         "reentry_posture",
@@ -1653,6 +1703,60 @@ def _updated_files_output(paths: tuple[str, ...]) -> str:
     lines = ["Success. Updated the following files:"]
     lines.extend(f"M {path}" for path in paths)
     return "\n".join(lines) + "\n"
+
+
+def build_repo_evidence_fixture(tmp_path: Path) -> Path:
+    root = tmp_path / "target-repo"
+    (root / "docs").mkdir(parents=True)
+    (root / ".github" / "workflows").mkdir(parents=True)
+    (root / "README.md").write_text(
+        "# Target Repo\n\nA small fixture repo for continuity tests.\n",
+        encoding="utf-8",
+    )
+    (root / "conventions.md").write_text(
+        "# Conventions\n\n- Must run validation before handoff.\n",
+        encoding="utf-8",
+    )
+    (root / "docs" / "next_steps.md").write_text(
+        "# Next Steps\n\n- Current priority: keep repo evidence attributed only.\n",
+        encoding="utf-8",
+    )
+    (root / ".github" / "workflows" / "ci.yml").write_text(
+        "name: CI\n\n"
+        "on: [push]\n\n"
+        "jobs:\n"
+        "  test:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: python -m pytest -q\n"
+        "      - run: python -m ruff check src tests\n",
+        encoding="utf-8",
+    )
+    (root / ".env").write_text("SECRET=local-only\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "config", "user.email", "fixture@example.test"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Fixture"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "commit", "-m", "fixture"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return root
 
 
 def repo_root() -> Path:

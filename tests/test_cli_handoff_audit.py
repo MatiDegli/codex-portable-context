@@ -20,6 +20,7 @@ HANDOFF_TOP_LEVEL_KEYS = {
     "current_state",
     "continuity_freshness",
     "roadmap_evidence",
+    "repo_evidence",
     "changed_artifacts",
     "decisions_and_invariants",
     "reentry_posture",
@@ -86,6 +87,20 @@ BRIDGE_SECTION_KEYS = {
         "include_in_restart_prompt",
         "used_for_synthesis",
     },
+    "repo_evidence": {
+        "status",
+        "summary",
+        "sources",
+        "recommended_inspection_order",
+        "prompt_sources",
+        "inclusion_reason",
+        "max_confidence",
+        "store_threshold",
+        "prompt_threshold",
+        "synthesis_threshold",
+        "include_in_restart_prompt",
+        "used_for_synthesis",
+    },
     "changed_artifacts": {
         "summary",
         "changed_paths",
@@ -146,6 +161,7 @@ def test_handoff_audit_cli_reports_memory_coverage(tmp_path: Path, capsys) -> No
     assert "Audited 2 session(s): 1 with memory, 1 empty, 0 errored." in captured.out
     assert "Readiness:" in captured.out
     assert "Source contract: pass=2, review=0, fail=0, error=0." in captured.out
+    assert "Repo evidence:" in captured.out
     assert "Purpose:" in captured.out
     assert "READY" in captured.out
     assert "PURPOSE" in captured.out
@@ -177,12 +193,14 @@ def test_handoff_audit_cli_json_reports_counts_and_sources(
     assert "context_structural_memory" in payload["items"][0]["sources"]
     assert payload["items"][0]["prompt_compliance"]["status"] == "pass"
     assert payload["items"][0]["source_contract_compliance"]["status"] == "pass"
+    assert payload["items"][0]["repo_evidence"]["status"] in {"found", "none", "unavailable"}
     assert (
         payload["items"][0]["source_contract_compliance"]["checks"]["section_sources_complete"]
         is True
     )
     assert payload["summary"]["prompt_compliance_counts"]["pass"] == 1
     assert payload["summary"]["source_contract_counts"]["pass"] == 1
+    assert payload["summary"]["repo_evidence_counts"]
 
 
 def test_handoff_audit_cli_marks_sparse_prompt_minimal_expected(
