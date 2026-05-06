@@ -699,6 +699,7 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         f"- Handoff Markdown: `{artifacts.get('handoff_markdown_relpath') or 'n/a'}`",
         f"- Handoff JSON: [{artifacts.get('handoff_json_relpath')}]({handoff_json_link})",
         f"- Repo root: `{artifacts.get('repo_root') or 'n/a'}`",
+        f"- Repo root source: `{artifacts.get('repo_root_source') or 'unknown'}`",
         f"- Branch: `{artifacts.get('repo_branch') or 'n/a'}`",
         f"- HEAD commit: `{artifacts.get('repo_head_commit') or 'n/a'}`",
         f"- HEAD commit date: `{artifacts.get('repo_head_commit_date') or 'n/a'}`",
@@ -871,6 +872,12 @@ def _build_handoff_payload(
         else []
     )
     repo_state = _detect_repo_state(cwd)
+    if not _string(repo_state.get("repo_root")):
+        inferred_cwd = _infer_repo_cwd_from_session_paths(parsed=parsed, summary=summary)
+        if inferred_cwd is not None:
+            repo_state = _detect_repo_state(inferred_cwd)
+            if _string(repo_state.get("repo_root")):
+                repo_state["repo_root_source"] = "inferred_from_artifact_paths"
     resolved_state = _build_resolved_state(
         parsed=parsed,
         summary=summary,
@@ -1010,6 +1017,7 @@ def _build_handoff_payload(
         "repo_branch": repo_state["repo_branch"],
         "repo_head_commit": repo_state["repo_head_commit"],
         "repo_head_commit_date": repo_state["repo_head_commit_date"],
+        "repo_root_source": repo_state["repo_root_source"],
         "repo_clean": repo_state["repo_clean"],
         "repo_dirty_paths": repo_state["repo_dirty_paths"],
         "snapshot_mode": metadata.get("snapshot_mode", "none"),
@@ -3304,6 +3312,12 @@ def _build_restart_prompt(
     )
     snapshot_lines = _restart_prompt_snapshot_lines(artifacts)
     roadmap_lines = _restart_prompt_roadmap_lines(roadmap_evidence)
+    repo_root_source = _string(artifacts.get("repo_root_source"))
+    repo_root_source_lines = (
+        [f"Repo root source: {repo_root_source}"]
+        if repo_root_source and repo_root_source != "metadata_cwd"
+        else []
+    )
     text_lines = [
         "Continue from a local extractive handoff. Do not treat this as a live provider resume.",
         "Initial operating mode: read-only context retrieval and review only.",
@@ -3319,6 +3333,7 @@ def _build_restart_prompt(
         f"Session: {session_label}",
         f"Session ID: {session_id}",
         f"Repo root: {artifacts.get('repo_root') or 'n/a'}",
+        *repo_root_source_lines,
         f"Branch: {artifacts.get('repo_branch') or 'n/a'}",
         f"HEAD: {artifacts.get('repo_head_commit') or 'n/a'}",
         f"Repo state: {repo_state}",
@@ -4750,6 +4765,91 @@ def _parse_tool_call_json(text: str) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _infer_repo_cwd_from_session_paths(
+    *,
+    parsed: ParsedSession | None,
+    summary: dict[str, Any],
+) -> Path | None:
+    candidate_paths = _absolute_session_path_candidates(parsed=parsed, summary=summary)
+    if not candidate_paths:
+        return None
+
+    repo_counts: dict[str, int] = {}
+    for candidate in candidate_paths:
+        repo_root = _git_repo_root_for_path(candidate)
+        if not repo_root:
+            continue
+        repo_counts[repo_root] = repo_counts.get(repo_root, 0) + 1
+
+    if not repo_counts:
+        return None
+    ranked = sorted(repo_counts.items(), key=lambda item: item[1], reverse=True)
+    if len(ranked) > 1 and ranked[0][1] <= ranked[1][1]:
+        return None
+    return Path(ranked[0][0])
+
+
+def _absolute_session_path_candidates(
+    *,
+    parsed: ParsedSession | None,
+    summary: dict[str, Any],
+) -> list[Path]:
+    candidates: list[Path] = []
+
+    def append_candidate(raw_path: str) -> None:
+        normalized = _normalize_artifact_path(raw_path)
+        if not normalized:
+            return
+        path = Path(normalized).expanduser()
+        if path.is_absolute():
+            candidates.append(path)
+
+    summary_values = [
+        summary.get("preview"),
+        summary.get("last_user_message"),
+        summary.get("last_assistant_message"),
+        summary.get("last_tool_summary"),
+    ]
+    for value in summary_values:
+        for path in _path_mentions_from_text(_string(value)):
+            append_candidate(path)
+
+    if parsed is None:
+        return candidates
+
+    blocks = [
+        *parsed.context_entries[-20:],
+        *parsed.conversation_entries[-RECENT_ACTION_LOOKBACK:],
+        *parsed.notable_events[-20:],
+    ]
+    for block in blocks:
+        for path in _path_mentions_from_text(block.text):
+            append_candidate(path)
+        if block.kind != "tool_call":
+            continue
+        payload = _parse_tool_call_json(block.text)
+        append_candidate(_string(payload.get("workdir")))
+        append_candidate(_string(payload.get("cwd")))
+
+    return candidates
+
+
+def _git_repo_root_for_path(path: Path) -> str:
+    candidate = path.expanduser()
+    search_dir = candidate if candidate.exists() and candidate.is_dir() else candidate.parent
+    if not search_dir.exists():
+        return ""
+    try:
+        return subprocess.run(
+            ["git", "-C", str(search_dir), "rev-parse", "--show-toplevel"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return ""
+
+
 def _expected_command_from_tool_call(text: str) -> str:
     payload = _parse_tool_call_json(text)
     cmd = _string(payload.get("cmd"))
@@ -4775,6 +4875,7 @@ def _detect_repo_state(cwd: Path | None) -> dict[str, Any]:
         "repo_branch": "",
         "repo_head_commit": "",
         "repo_head_commit_date": "",
+        "repo_root_source": "",
         "repo_clean": None,
         "repo_dirty_paths": [],
     }
@@ -4821,6 +4922,7 @@ def _detect_repo_state(cwd: Path | None) -> dict[str, Any]:
             "repo_branch": branch,
             "repo_head_commit": head_commit,
             "repo_head_commit_date": head_commit_date,
+            "repo_root_source": "metadata_cwd",
             "repo_clean": not bool(status),
             "repo_dirty_paths": _parse_git_status_paths(status),
         }

@@ -554,6 +554,30 @@ Acceptance checks:
 - Historical snapshot JSON/Markdown/reader artifacts are written with stable suffixes.
 - The generated snapshot prompt excludes later prompt-review/meta-discussion text.
 
+## Phase 5k: Repo Root Inference Fallback
+
+Implementation status: implemented.
+
+Recover repo metadata when older or sparse exported sessions lack a usable cwd
+but still contain absolute artifact paths from the target repo.
+
+Implementation guidance:
+
+- Only infer when normal cwd-based git detection fails.
+- Use absolute transcript, summary, and tool-call workdir paths as evidence.
+- Select a repo root only when one git root clearly dominates the evidence.
+- Mark inferred roots with `repo_root_source=inferred_from_artifact_paths`.
+- Once inferred, use the repo root for branch, HEAD, clean/dirty state, and
+  repo-relative artifact recommendations.
+
+Acceptance checks:
+
+- Sessions with missing cwd but repeated absolute repo paths no longer emit
+  `Repo root: n/a`.
+- Ambiguous multi-repo evidence does not force a root.
+- Recommended inspection targets under the inferred repo render as relative
+  paths such as `src/...`, `tests/...`, or docs paths.
+
 ## Phase 6: Provider-Agnostic Continuity Quality
 
 Implementation status: complete.

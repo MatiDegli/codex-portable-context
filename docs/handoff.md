@@ -36,6 +36,8 @@ If the original local source session file is still available through `metadata.s
   newer than the exported conversation context
 - roadmap evidence discovery that cites repo-owned roadmap/status docs without
   using them for synthesis yet
+- inferred repo metadata from dominant absolute artifact paths when the
+  original session cwd is missing or stale
 - durable decisions, invariants, rejected paths, and open architecture questions
 - a re-entry posture contract that defaults the first turn to read-only review
 - a copy-ready restart prompt for a fresh local session
@@ -117,6 +119,12 @@ repo-owned roadmap or status documents such as `docs/next_steps.md`, roadmap
 docs, strategy docs, decision docs, and status docs. The current implementation
 does not use those docs to rewrite the brief, decisions, or next action; it only
 cites sources and marks `used_for_synthesis=false`.
+
+When session metadata does not expose a usable cwd, handoff generation can infer
+the repo root from dominant absolute paths mentioned in recent transcript,
+summary, or tool-call workdir evidence. Inferred roots are marked with
+`repo_root_source=inferred_from_artifact_paths` and are used to report branch,
+HEAD, clean/dirty state, and repo-relative artifact paths.
 
 Historical handoff snapshots are available for source-backed sessions:
 

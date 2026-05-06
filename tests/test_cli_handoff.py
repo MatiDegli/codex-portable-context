@@ -619,6 +619,38 @@ def test_handoff_cli_resolves_bare_updated_files_from_repo_root(
     assert "/" not in recommended
 
 
+def test_handoff_cli_infers_repo_root_from_absolute_paths_when_cwd_unavailable(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    linked_handoff_path = repo_root() / "src/codex_portable_context/core/handoff.py"
+    linked_test_path = repo_root() / "tests/test_cli_handoff.py"
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        second_cwd=str(tmp_path / "missing-worktree"),
+        final_answer_after_request=True,
+        final_answer_message=(
+            "Implemented the handoff polish in "
+            f"[handoff.py]({linked_handoff_path}:42) and "
+            f"[test_cli_handoff.py]({linked_test_path}:10)."
+        ),
+        tool_updated_files=("handoff.py",),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "session-5678"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    recommended = payload["changed_artifacts"]["recommended_inspection_order"]
+    assert payload["artifacts"]["repo_root"] == str(repo_root())
+    assert payload["artifacts"]["repo_root_source"] == "inferred_from_artifact_paths"
+    assert "Repo root source: inferred_from_artifact_paths" in payload["restart_prompt"]["text"]
+    assert "src/codex_portable_context/core/handoff.py" in recommended
+    assert "tests/test_cli_handoff.py" in recommended
+    assert not any(str(repo_root()) in path for path in recommended)
+
+
 def test_handoff_cli_expands_contextual_short_follow_up(
     tmp_path: Path,
     capsys,
@@ -1157,6 +1189,7 @@ def build_fixture_mirror(
     developer_context: str = "",
     tool_updated_files: tuple[str, ...] = ("README.md",),
     second_thread_name: str = "Second Fixture Session",
+    second_cwd: str | None = None,
     post_final_user_message: str = "",
 ) -> Path:
     codex_home = tmp_path / ".codex"
@@ -1174,7 +1207,7 @@ def build_fixture_mirror(
         session_id="session-5678",
         updated_at="2026-03-16T10:05:06Z",
         thread_name=second_thread_name,
-        cwd=str(repo_root()),
+        cwd=str(repo_root()) if second_cwd is None else second_cwd,
         wrapped_request=wrapped_request,
         prior_wrapped_request=prior_wrapped_request,
         include_turn_aborted=True,

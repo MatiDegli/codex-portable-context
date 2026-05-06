@@ -482,6 +482,11 @@ Handoffs also include a conservative `roadmap_evidence` layer. It discovers and
 cites repo-owned roadmap/status docs when they appear useful, but the current
 slice does not use them to rewrite the continuation brief or next action.
 
+If a source session lacks a usable cwd, handoff generation can infer the repo
+root from dominant absolute artifact paths in the transcript and then report the
+branch, HEAD, repo state, and repo-relative inspection targets. Inferred roots
+are marked as `repo_root_source=inferred_from_artifact_paths`.
+
 Use `codex-session-handoff 019cef3a --restart-prompt` to print only the generated fresh-session prompt.
 
 Use `codex-session-handoff 019cef3a --before-last-user --restart-prompt`
