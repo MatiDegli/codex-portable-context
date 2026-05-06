@@ -6,8 +6,8 @@ import json
 import re
 import sqlite3
 import subprocess
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -15,10 +15,11 @@ from codex_portable_context.providers import get_provider_adapter
 
 from .discovery import mirror_layout
 from .html_reader import render_session_reader
-from .index import MirrorEntry, entry_path
-from .markdown import pretty_timestamp
+from .index import MirrorEntry, entry_path, load_index
+from .markdown import pretty_timestamp, render_session_markdown
 from .parsing import ParsedSession, RenderBlock
 from .redaction import RedactionContext, redact_text
+from .summaries import build_summary
 
 RECENT_ACTION_LOOKBACK = 80
 LINKED_CHILD_SESSION_LIMIT = 12
@@ -39,6 +40,8 @@ SOURCE_SECTION_KEYS = (
     "continuation_brief",
     "resolved_state",
     "current_state",
+    "continuity_freshness",
+    "roadmap_evidence",
     "changed_artifacts",
     "decisions_and_invariants",
     "reentry_posture",
@@ -57,6 +60,48 @@ SECTION_SOURCE_VALUES = (
     "not_supported",
 )
 
+ROADMAP_KNOWN_RELATIVE_PATHS = (
+    "docs/next_steps.md",
+    "docs/roadmap.md",
+    "docs/continuity-bridge-roadmap.md",
+    "ROADMAP.md",
+    "roadmap.md",
+)
+ROADMAP_GLOB_PATTERNS = (
+    "docs/*roadmap*.md",
+    "docs/*next*step*.md",
+    "docs/*strategy*.md",
+    "docs/*decision*.md",
+    "docs/*status*.md",
+)
+ROADMAP_SIGNAL_MARKERS = (
+    "active track",
+    "acceptance checks",
+    "current priority",
+    "current state",
+    "decision",
+    "invariant",
+    "next best action",
+    "next step",
+    "next steps",
+    "non-goal",
+    "paused",
+    "phase ",
+    "priority",
+    "roadmap",
+    "source of truth",
+    "rejected",
+    "risk",
+    "status",
+    "validation",
+    "frente principal",
+    "linea principal",
+    "línea principal",
+    "pausado",
+    "prioridad",
+    "siguiente paso",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class HandoffResult:
@@ -67,25 +112,64 @@ class HandoffResult:
     json_path: Path
 
 
-def generate_handoff(entry: MirrorEntry, out_dir: Path | None = None) -> HandoffResult:
+@dataclass(frozen=True, slots=True)
+class HandoffUserTurn:
+    """One user-message boundary that can be used for historical snapshots."""
+
+    index: int
+    timestamp: str
+    preview: str
+
+
+def generate_handoff(
+    entry: MirrorEntry,
+    out_dir: Path | None = None,
+    *,
+    as_of: str | None = None,
+    before_last_user: bool = False,
+    before_user: int | None = None,
+) -> HandoffResult:
     """Write an extractive handoff bundle for one derived mirror entry."""
 
     layout = mirror_layout(out_dir)
     layout.handoffs_dir.mkdir(parents=True, exist_ok=True)
 
+    if (
+        sum(
+            1 for active in (as_of is not None, before_last_user, before_user is not None) if active
+        )
+        > 1
+    ):
+        raise ValueError("Use only one historical snapshot mode.")
+
     session_id = str(entry["session_id"])
     metadata_path = entry_path(entry, "metadata", layout.out_dir)
     markdown_path = entry_path(entry, "markdown", layout.out_dir)
-    reader_relpath = str(
-        entry.get("reader_relpath") or layout.reader_relpath(session_id)
-    )
+    reader_relpath = str(entry.get("reader_relpath") or layout.reader_relpath(session_id))
 
     metadata_text = metadata_path.read_text(encoding="utf-8")
     metadata = json.loads(metadata_text)
     transcript_text = markdown_path.read_text(encoding="utf-8")
+    reader_metadata_text = metadata_text
     cwd = _string(metadata.get("cwd"))
 
     parsed = _load_source_session(metadata)
+    handoff_artifact_id = session_id
+    if as_of or before_last_user or before_user is not None:
+        if parsed is None:
+            raise ValueError("Historical handoff snapshots require the local source session.")
+        parsed, metadata, transcript_text, snapshot_label = _apply_handoff_snapshot(
+            parsed=parsed,
+            metadata=metadata,
+            transcript_text=transcript_text,
+            as_of=as_of,
+            before_last_user=before_last_user,
+            before_user=before_user,
+        )
+        handoff_artifact_id = f"{session_id}.{snapshot_label}"
+        reader_relpath = str(layout.reader_relpath(handoff_artifact_id))
+        reader_metadata_text = json.dumps(metadata, indent=2, ensure_ascii=False) + "\n"
+
     handoff = _build_handoff_payload(
         metadata=metadata,
         transcript_text=transcript_text,
@@ -93,10 +177,11 @@ def generate_handoff(entry: MirrorEntry, out_dir: Path | None = None) -> Handoff
         reader_relpath=reader_relpath,
         out_dir=layout.out_dir,
         cwd=Path(cwd).expanduser() if cwd else None,
+        handoff_artifact_id=handoff_artifact_id,
     )
 
-    handoff_json_path = layout.handoff_json_path(session_id)
-    handoff_markdown_path = layout.handoff_markdown_path(session_id)
+    handoff_json_path = layout.handoff_json_path(handoff_artifact_id)
+    handoff_markdown_path = layout.handoff_markdown_path(handoff_artifact_id)
     handoff_json_path.write_text(
         json.dumps(handoff, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
@@ -105,12 +190,12 @@ def generate_handoff(entry: MirrorEntry, out_dir: Path | None = None) -> Handoff
         render_handoff_markdown(handoff),
         encoding="utf-8",
     )
-    reader_path = layout.reader_path(session_id)
+    reader_path = layout.reader_path(handoff_artifact_id)
     reader_path.parent.mkdir(parents=True, exist_ok=True)
     reader_path.write_text(
         render_session_reader(
             entry=metadata,
-            metadata_text=metadata_text,
+            metadata_text=reader_metadata_text,
             markdown_text=transcript_text,
             handoff=handoff,
         ),
@@ -124,6 +209,258 @@ def generate_handoff(entry: MirrorEntry, out_dir: Path | None = None) -> Handoff
     )
 
 
+def list_handoff_user_turns(
+    entry: MirrorEntry,
+    out_dir: Path | None = None,
+) -> list[HandoffUserTurn]:
+    """List user-message boundaries available for historical handoff snapshots."""
+
+    layout = mirror_layout(out_dir)
+    metadata_path = entry_path(entry, "metadata", layout.out_dir)
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    parsed = _load_source_session(metadata)
+    if parsed is None:
+        raise ValueError("Listing handoff turns requires the local source session.")
+
+    turns: list[HandoffUserTurn] = []
+    for index, block in enumerate(
+        (block for block in parsed.conversation_entries if block.kind == "user"),
+        start=1,
+    ):
+        preview = _excerpt_text(
+            " ".join(_strip_memory_ide_wrapper(block.text).split()),
+            limit=180,
+        )
+        turns.append(
+            HandoffUserTurn(
+                index=index,
+                timestamp=_string(block.timestamp) or "n/a",
+                preview=preview,
+            )
+        )
+    return turns
+
+
+def _apply_handoff_snapshot(
+    *,
+    parsed: ParsedSession,
+    metadata: dict[str, Any],
+    transcript_text: str,
+    as_of: str | None,
+    before_last_user: bool,
+    before_user: int | None,
+) -> tuple[ParsedSession, dict[str, Any], str, str]:
+    if before_user is not None:
+        truncated = _truncate_parsed_session_before_user(parsed, before_user)
+        snapshot_as_of = _best_parsed_timestamp(truncated)
+        snapshot_label = f"before-user-{before_user}"
+        snapshot_mode = "before_user"
+    elif before_last_user:
+        truncated = _truncate_parsed_session_before_last_user(parsed)
+        snapshot_as_of = _best_parsed_timestamp(truncated)
+        snapshot_label = "before-last-user"
+        snapshot_mode = "before_last_user"
+    else:
+        cutoff = _parse_iso_timestamp(as_of or "")
+        if cutoff is None:
+            raise ValueError(f"Invalid --as-of timestamp: {as_of}")
+        truncated = _truncate_parsed_session_as_of(parsed, cutoff)
+        snapshot_as_of = _format_iso_timestamp(cutoff)
+        snapshot_label = f"asof-{_snapshot_timestamp_slug(snapshot_as_of)}"
+        snapshot_mode = "as_of"
+
+    if not truncated.conversation_entries:
+        raise ValueError("Historical handoff snapshot has no conversation before the boundary.")
+
+    snapshot_metadata = _snapshot_metadata(
+        metadata=metadata,
+        parsed=truncated,
+        snapshot_mode=snapshot_mode,
+        snapshot_as_of=snapshot_as_of,
+        snapshot_label=snapshot_label,
+    )
+    snapshot_transcript = _snapshot_transcript_text(
+        metadata=snapshot_metadata,
+        parsed=truncated,
+        fallback=transcript_text,
+    )
+    return truncated, snapshot_metadata, snapshot_transcript, snapshot_label
+
+
+def _truncate_parsed_session_before_last_user(parsed: ParsedSession) -> ParsedSession:
+    user_positions = _user_turn_positions(parsed)
+    if len(user_positions) < 2:
+        raise ValueError("Cannot create --before-last-user snapshot without prior conversation.")
+    return _truncate_parsed_session_before_conversation_index(parsed, user_positions[-1])
+
+
+def _truncate_parsed_session_before_user(
+    parsed: ParsedSession,
+    user_index: int,
+) -> ParsedSession:
+    if user_index < 1:
+        raise ValueError("--before-user expects a positive 1-based user turn index.")
+    user_positions = _user_turn_positions(parsed)
+    if user_index > len(user_positions):
+        raise ValueError(
+            f"--before-user {user_index} is out of range; this session has "
+            f"{len(user_positions)} user turn(s)."
+        )
+    conversation_index = user_positions[user_index - 1]
+    if conversation_index <= 0:
+        raise ValueError("Cannot create a snapshot before the first user message.")
+    return _truncate_parsed_session_before_conversation_index(parsed, conversation_index)
+
+
+def _user_turn_positions(parsed: ParsedSession) -> list[int]:
+    return [
+        index for index, block in enumerate(parsed.conversation_entries) if block.kind == "user"
+    ]
+
+
+def _truncate_parsed_session_before_conversation_index(
+    parsed: ParsedSession,
+    conversation_index: int,
+) -> ParsedSession:
+    conversation = parsed.conversation_entries[:conversation_index]
+    cutoff = _max_iso_timestamp(
+        [_string(block.timestamp) for block in conversation]
+        + [_string(block.timestamp) for block in parsed.context_entries]
+    )
+    notable_events = _blocks_at_or_before(parsed.notable_events, cutoff)
+    return _replace_parsed_blocks(
+        parsed,
+        context_entries=parsed.context_entries,
+        conversation_entries=conversation,
+        notable_events=notable_events,
+    )
+
+
+def _truncate_parsed_session_as_of(
+    parsed: ParsedSession,
+    cutoff: datetime,
+) -> ParsedSession:
+    cutoff_text = _format_iso_timestamp(cutoff)
+    return _replace_parsed_blocks(
+        parsed,
+        context_entries=_blocks_at_or_before(parsed.context_entries, cutoff_text),
+        conversation_entries=_blocks_at_or_before(parsed.conversation_entries, cutoff_text),
+        notable_events=_blocks_at_or_before(parsed.notable_events, cutoff_text),
+    )
+
+
+def _blocks_at_or_before(blocks: list[RenderBlock], cutoff: str) -> list[RenderBlock]:
+    if not cutoff:
+        return list(blocks)
+    cutoff_dt = _parse_iso_timestamp(cutoff)
+    if cutoff_dt is None:
+        return list(blocks)
+
+    kept: list[RenderBlock] = []
+    for block in blocks:
+        if not block.timestamp:
+            kept.append(block)
+            continue
+        block_dt = _parse_iso_timestamp(block.timestamp)
+        if block_dt is None or block_dt <= cutoff_dt:
+            kept.append(block)
+    return kept
+
+
+def _replace_parsed_blocks(
+    parsed: ParsedSession,
+    *,
+    context_entries: list[RenderBlock],
+    conversation_entries: list[RenderBlock],
+    notable_events: list[RenderBlock],
+) -> ParsedSession:
+    user_messages = [block.text for block in conversation_entries if block.kind == "user"]
+    assistant_messages = [block.text for block in conversation_entries if block.kind == "assistant"]
+    return replace(
+        parsed,
+        context_entries=list(context_entries),
+        conversation_entries=list(conversation_entries),
+        notable_events=list(notable_events),
+        user_messages=user_messages,
+        assistant_messages=assistant_messages,
+        event_count=len(context_entries) + len(conversation_entries) + len(notable_events),
+        context_entry_count=len(context_entries),
+        user_message_count=len(user_messages),
+        assistant_message_count=len(assistant_messages),
+        tool_call_count=sum(1 for item in conversation_entries if item.kind == "tool_call"),
+        tool_output_count=sum(1 for item in conversation_entries if item.kind == "tool_output"),
+        notable_event_count=len(notable_events),
+    )
+
+
+def _snapshot_metadata(
+    *,
+    metadata: dict[str, Any],
+    parsed: ParsedSession,
+    snapshot_mode: str,
+    snapshot_as_of: str,
+    snapshot_label: str,
+) -> dict[str, Any]:
+    updated_at = _best_parsed_timestamp(parsed) or snapshot_as_of
+    snapshot = dict(metadata)
+    snapshot.update(
+        {
+            "updated_at": updated_at,
+            "summary": build_summary(parsed),
+            "event_count": parsed.event_count,
+            "context_entry_count": parsed.context_entry_count,
+            "user_message_count": parsed.user_message_count,
+            "assistant_message_count": parsed.assistant_message_count,
+            "tool_call_count": parsed.tool_call_count,
+            "tool_output_count": parsed.tool_output_count,
+            "notable_event_count": parsed.notable_event_count,
+            "snapshot_mode": snapshot_mode,
+            "snapshot_as_of": snapshot_as_of,
+            "snapshot_label": snapshot_label,
+            "snapshot_source_session_id": _string(metadata.get("session_id")),
+        }
+    )
+    return snapshot
+
+
+def _snapshot_transcript_text(
+    *,
+    metadata: dict[str, Any],
+    parsed: ParsedSession,
+    fallback: str,
+) -> str:
+    summary = _as_dict(metadata.get("summary"))
+    includes = _as_dict(metadata.get("markdown_includes"))
+    try:
+        transcript = render_session_markdown(
+            parsed=parsed,
+            title=_string(metadata.get("title")) or _string(metadata.get("session_id")),
+            thread_name=_string(metadata.get("thread_name")),
+            updated_at=_string(metadata.get("updated_at")),
+            export_profile=_string(metadata.get("export_profile")) or "full",
+            summary=summary,
+            include_context=includes.get("context") is not False,
+            include_tools=includes.get("tools") is not False,
+            include_events=includes.get("events") is not False,
+        )
+    except (TypeError, ValueError):
+        return fallback
+    if metadata.get("redacted"):
+        return redact_text(transcript, RedactionContext.detect()).text
+    return transcript
+
+
+def _snapshot_timestamp_slug(timestamp: str) -> str:
+    parsed = _parse_iso_timestamp(timestamp)
+    if parsed is None:
+        return re.sub(r"[^0-9A-Za-z]+", "-", timestamp).strip("-")[:40] or "unknown"
+    return parsed.strftime("%Y%m%dT%H%M%SZ")
+
+
+def _format_iso_timestamp(timestamp: datetime) -> str:
+    return timestamp.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def render_handoff_markdown(handoff: dict[str, Any]) -> str:
     """Render a readable handoff Markdown document."""
 
@@ -134,6 +471,7 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
     restart_prompt = _as_dict(handoff.get("restart_prompt"))
     reentry_posture = _as_dict(handoff.get("reentry_posture"))
     continuity_entry = _as_dict(handoff.get("continuity_entry"))
+    continuity_freshness = _as_dict(handoff.get("continuity_freshness"))
     current_state = _as_dict(handoff.get("current_state"))
     open_loops = _as_dict(handoff.get("open_loops"))
     source = _as_dict(handoff.get("source_availability"))
@@ -144,21 +482,22 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
     recent_tools = _as_list(handoff.get("recent_tool_activity"))
     compaction_summaries = _as_list(handoff.get("compaction_summaries"))
     linked_child_sessions = _as_list(handoff.get("linked_child_sessions"))
+    roadmap_evidence = _as_dict(handoff.get("roadmap_evidence"))
     changed_artifacts = _as_dict(handoff.get("changed_artifacts"))
     decisions_and_invariants = _as_dict(handoff.get("decisions_and_invariants"))
     transcript_link = _handoff_relpath(_string(artifacts.get("markdown_relpath")))
     metadata_link = _handoff_relpath(_string(artifacts.get("metadata_relpath")))
     reader_link = _handoff_relpath(_string(artifacts.get("reader_relpath")))
     handoff_json_link = _handoff_sibling_relpath(_string(artifacts.get("handoff_json_relpath")))
-    primary_label = _string(
-        continuity_entry.get("primary_artifact_relpath")
-    ) or _string(artifacts.get("handoff_markdown_relpath"))
+    primary_label = _string(continuity_entry.get("primary_artifact_relpath")) or _string(
+        artifacts.get("handoff_markdown_relpath")
+    )
     transcript_fallback_label = _string(
         continuity_entry.get("transcript_fallback_relpath")
     ) or _string(artifacts.get("markdown_relpath"))
-    reader_fallback_label = _string(
-        continuity_entry.get("reader_fallback_relpath")
-    ) or _string(artifacts.get("reader_relpath"))
+    reader_fallback_label = _string(continuity_entry.get("reader_fallback_relpath")) or _string(
+        artifacts.get("reader_relpath")
+    )
     primary_link = _handoff_sibling_relpath(
         _string(continuity_entry.get("primary_artifact_relpath"))
     )
@@ -179,17 +518,19 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         if artifacts.get("repo_clean") is False
         else "unknown"
     )
+    snapshot_mode = _string(artifacts.get("snapshot_mode")) or "none"
+    snapshot_as_of = _string(artifacts.get("snapshot_as_of"))
     continuation_evidence = [
-        f"- {item}"
-        for item in _as_list(continuation_brief.get("evidence"))
+        f"- {item}" for item in _as_list(continuation_brief.get("evidence"))
     ] or ["- none"]
     resolution_status = resolved_state.get("request_resolution_status") or "unknown"
     remaining_local_paths = resolved_state.get("remaining_local_only_paths") or "n/a"
     contextual_request = resolved_state.get("contextual_user_request") or "n/a"
     inspection_order_lines = [
-        f"- `{item}`"
-        for item in _as_list(changed_artifacts.get("recommended_inspection_order"))
+        f"- `{item}`" for item in _as_list(changed_artifacts.get("recommended_inspection_order"))
     ] or ["- none"]
+    roadmap_sources = _as_list(roadmap_evidence.get("sources"))
+    roadmap_source_lines = _roadmap_evidence_markdown_lines(roadmap_sources)
 
     lines: list[str] = [
         f"# Handoff: {session.get('title') or handoff.get('session_id')}",
@@ -208,12 +549,45 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         f"- Provider: `{source.get('provider') or handoff.get('provider') or 'unknown'}`",
         f"- Source session available locally: `{'yes' if source.get('available') else 'no'}`",
         f"- Source mode: `{source.get('mode') or 'unknown'}`",
+        f"- Historical snapshot: `{'yes' if snapshot_mode != 'none' else 'no'}`",
+        f"- Snapshot mode: `{snapshot_mode}`",
+        f"- Snapshot as-of: `{snapshot_as_of or 'n/a'}`",
         "",
         f"- Started with: {session.get('preview') or 'n/a'}",
         f"- Last substantive user request: {session.get('last_substantive_user_request') or 'n/a'}",
         f"- Latest assistant reply: {session.get('last_assistant_message') or 'n/a'}",
         f"- Activity: {session.get('activity') or 'n/a'}",
         f"- Environment: {session.get('environment') or 'n/a'}",
+        "",
+        "## Continuity Freshness",
+        "",
+        f"- Status: `{continuity_freshness.get('status') or 'unknown'}`",
+        f"- Warning: {continuity_freshness.get('warning') or 'none'}",
+        f"- Session updated at: `{continuity_freshness.get('session_updated_at') or 'n/a'}`",
+        f"- Repo HEAD commit date: `{continuity_freshness.get('repo_head_commit_date') or 'n/a'}`",
+        (
+            "- Latest same-cwd session: "
+            f"`{continuity_freshness.get('latest_same_cwd_session_id') or 'none'}`"
+        ),
+        f"- Recommendation: {continuity_freshness.get('recommendation') or 'n/a'}",
+        "",
+        "## Roadmap Evidence",
+        "",
+        f"- Status: `{roadmap_evidence.get('status') or 'unknown'}`",
+        f"- Summary: {roadmap_evidence.get('summary') or 'n/a'}",
+        f"- Activation reason: `{roadmap_evidence.get('activation_reason') or 'none'}`",
+        (
+            "- Included in restart prompt: "
+            f"`{'yes' if roadmap_evidence.get('include_in_restart_prompt') else 'no'}`"
+        ),
+        (
+            "- Used for synthesis: "
+            f"`{'yes' if roadmap_evidence.get('used_for_synthesis') else 'no'}`"
+        ),
+        "",
+        "### Sources",
+        "",
+        *roadmap_source_lines,
         "",
         "## Continuation Brief",
         "",
@@ -289,10 +663,7 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         "",
         "### First Turn Contract",
         "",
-        *[
-            f"- {item}"
-            for item in _as_list(reentry_posture.get("first_turn_contract"))
-        ],
+        *[f"- {item}" for item in _as_list(reentry_posture.get("first_turn_contract"))],
         "",
         "## Restart Prompt",
         "",
@@ -330,7 +701,10 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
         f"- Repo root: `{artifacts.get('repo_root') or 'n/a'}`",
         f"- Branch: `{artifacts.get('repo_branch') or 'n/a'}`",
         f"- HEAD commit: `{artifacts.get('repo_head_commit') or 'n/a'}`",
+        f"- HEAD commit date: `{artifacts.get('repo_head_commit_date') or 'n/a'}`",
         f"- Repo state: `{repo_state}`",
+        f"- Snapshot mode: `{snapshot_mode}`",
+        f"- Snapshot as-of: `{snapshot_as_of or 'n/a'}`",
         "",
         "## Operator Note Template",
         "",
@@ -439,7 +813,7 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
                     f"### {block.get('label')}",
                     "",
                     f"- Kind: `{block.get('kind')}`",
-                    f"- Timestamp: `{pretty_timestamp(_string(block.get('timestamp')) )}`",
+                    f"- Timestamp: `{pretty_timestamp(_string(block.get('timestamp')))}`",
                     block.get("text") or "_No text available._",
                     "",
                 ]
@@ -466,7 +840,7 @@ def render_handoff_markdown(handoff: dict[str, Any]) -> str:
                 [
                     f"### {tool.get('label')}",
                     "",
-                    f"- Timestamp: `{pretty_timestamp(_string(tool.get('timestamp')) )}`",
+                    f"- Timestamp: `{pretty_timestamp(_string(tool.get('timestamp')))}`",
                     f"- Tool: `{tool.get('tool_name') or 'unknown'}`",
                     tool.get("text") or "_No text available._",
                     "",
@@ -484,6 +858,7 @@ def _build_handoff_payload(
     reader_relpath: str,
     out_dir: Path,
     cwd: Path | None,
+    handoff_artifact_id: str | None = None,
 ) -> dict[str, Any]:
     summary = _as_dict(metadata.get("summary"))
     redacted = bool(metadata.get("redacted"))
@@ -525,8 +900,9 @@ def _build_handoff_payload(
     )
     layout = mirror_layout(out_dir)
     session_id = _string(metadata.get("session_id"))
-    handoff_markdown_relpath = str(layout.handoff_markdown_relpath(session_id))
-    handoff_json_relpath = str(layout.handoff_json_relpath(session_id))
+    artifact_id = handoff_artifact_id or session_id
+    handoff_markdown_relpath = str(layout.handoff_markdown_relpath(artifact_id))
+    handoff_json_relpath = str(layout.handoff_json_relpath(artifact_id))
     continuity_entry = _build_continuity_entry(
         metadata=metadata,
         handoff_markdown_relpath=handoff_markdown_relpath,
@@ -581,10 +957,28 @@ def _build_handoff_payload(
         redacted=redacted,
         context=redaction_context,
     )
+    continuity_freshness = _build_continuity_freshness(
+        metadata=metadata,
+        parsed=parsed,
+        repo_state=repo_state,
+        out_dir=out_dir,
+        linked_child_sessions=linked_child_sessions,
+    )
     changed_artifacts = _build_changed_artifacts(
         parsed=parsed,
         resolved_state=resolved_state,
         recent_window=recent_window,
+        repo_state=repo_state,
+        redacted=redacted,
+        context=redaction_context,
+    )
+    roadmap_evidence = _build_roadmap_evidence(
+        parsed=parsed,
+        resolved_state=resolved_state,
+        current_state=current_state,
+        continuation_brief=continuation_brief,
+        changed_artifacts=changed_artifacts,
+        continuity_freshness=continuity_freshness,
         repo_state=repo_state,
         redacted=redacted,
         context=redaction_context,
@@ -615,8 +1009,13 @@ def _build_handoff_payload(
         "repo_root": repo_state["repo_root"],
         "repo_branch": repo_state["repo_branch"],
         "repo_head_commit": repo_state["repo_head_commit"],
+        "repo_head_commit_date": repo_state["repo_head_commit_date"],
         "repo_clean": repo_state["repo_clean"],
         "repo_dirty_paths": repo_state["repo_dirty_paths"],
+        "snapshot_mode": metadata.get("snapshot_mode", "none"),
+        "snapshot_as_of": metadata.get("snapshot_as_of", ""),
+        "snapshot_label": metadata.get("snapshot_label", ""),
+        "snapshot_source_session_id": metadata.get("snapshot_source_session_id", ""),
     }
     reentry_posture = _build_reentry_posture(
         continuation_brief=continuation_brief,
@@ -631,6 +1030,8 @@ def _build_handoff_payload(
         resolved_state=resolved_state,
         open_loops=open_loops,
         reentry_posture=reentry_posture,
+        continuity_freshness=continuity_freshness,
+        roadmap_evidence=roadmap_evidence,
         changed_artifacts=changed_artifacts,
         decisions_and_invariants=decisions_and_invariants,
         linked_child_sessions=linked_child_sessions,
@@ -668,6 +1069,8 @@ def _build_handoff_payload(
         "continuation_brief": continuation_brief,
         "resolved_state": resolved_state,
         "current_state": current_state,
+        "continuity_freshness": continuity_freshness,
+        "roadmap_evidence": roadmap_evidence,
         "changed_artifacts": changed_artifacts,
         "decisions_and_invariants": decisions_and_invariants,
         "reentry_posture": reentry_posture,
@@ -767,10 +1170,7 @@ def _provider_capabilities_payload(provider_id: str) -> dict[str, bool]:
         capabilities = get_provider_adapter(provider_id).capabilities()
     except ValueError:
         return {key: False for key in PROVIDER_CAPABILITY_KEYS}
-    return {
-        key: bool(getattr(capabilities, key))
-        for key in PROVIDER_CAPABILITY_KEYS
-    }
+    return {key: bool(getattr(capabilities, key)) for key in PROVIDER_CAPABILITY_KEYS}
 
 
 def _source_limitations(
@@ -822,6 +1222,8 @@ def _source_section_sources(
         "continuation_brief": bridge_source,
         "resolved_state": bridge_source,
         "current_state": bridge_source,
+        "continuity_freshness": "derived_mirror",
+        "roadmap_evidence": "derived_mirror",
         "changed_artifacts": bridge_source,
         "decisions_and_invariants": bridge_source,
         "reentry_posture": "derived_mirror",
@@ -836,8 +1238,7 @@ def _source_section_sources(
 
 def _available_sections_from_sources(section_sources: dict[str, str]) -> dict[str, bool]:
     return {
-        key: value not in {"unavailable", "not_supported"}
-        for key, value in section_sources.items()
+        key: value not in {"unavailable", "not_supported"} for key, value in section_sources.items()
     }
 
 
@@ -854,6 +1255,449 @@ def _source_availability_note(
         "Recent window was extracted from the local source session; "
         "tool activity is unavailable for this provider."
     )
+
+
+def _build_continuity_freshness(
+    *,
+    metadata: dict[str, Any],
+    parsed: ParsedSession | None,
+    repo_state: dict[str, Any],
+    out_dir: Path,
+    linked_child_sessions: list[dict[str, str]],
+) -> dict[str, str]:
+    session_updated_at = _handoff_session_updated_at(metadata, parsed)
+    repo_head_date = _string(repo_state.get("repo_head_commit_date"))
+    newer_sessions = _newer_same_cwd_sessions(
+        metadata=metadata,
+        out_dir=out_dir,
+        session_updated_at=session_updated_at,
+        linked_child_sessions=linked_child_sessions,
+    )
+    repo_advanced = _timestamp_after_with_tolerance(
+        repo_head_date,
+        session_updated_at,
+        tolerance=timedelta(minutes=5),
+    )
+
+    latest_same_cwd = newer_sessions[0] if newer_sessions else {}
+    latest_same_cwd_id = _string(latest_same_cwd.get("session_id"))
+    latest_same_cwd_updated_at = _string(latest_same_cwd.get("updated_at"))
+
+    warnings: list[str] = []
+    if latest_same_cwd_id:
+        warnings.append(
+            "A newer exported session uses the same working directory "
+            f"({latest_same_cwd_id} at {latest_same_cwd_updated_at})."
+        )
+    if repo_advanced:
+        warnings.append(
+            "The current repo HEAD commit is newer than this session's exported "
+            "conversation timestamp."
+        )
+
+    if latest_same_cwd_id and repo_advanced:
+        status = "stale_newer_same_cwd_and_repo_advanced"
+    elif latest_same_cwd_id:
+        status = "stale_newer_same_cwd_session"
+    elif repo_advanced:
+        status = "stale_repo_advanced_after_session"
+    elif not session_updated_at:
+        status = "unknown"
+    else:
+        status = "fresh"
+
+    if warnings:
+        recommendation = (
+            "Treat this handoff as potentially stale. Start in review or plan "
+            "mode, inspect the latest same-repo session or committed roadmap, "
+            "and do not implement from the old continuation brief until the "
+            "user confirms the active line."
+        )
+    elif status == "unknown":
+        recommendation = (
+            "Timestamp freshness could not be verified; use the restart prompt's "
+            "read-only first turn before acting."
+        )
+    else:
+        recommendation = "No freshness warning detected."
+
+    return {
+        "status": status,
+        "warning": " ".join(warnings) if warnings else "none",
+        "session_updated_at": session_updated_at,
+        "repo_head_commit_date": repo_head_date,
+        "latest_same_cwd_session_id": latest_same_cwd_id,
+        "latest_same_cwd_updated_at": latest_same_cwd_updated_at,
+        "recommendation": recommendation,
+    }
+
+
+def _build_roadmap_evidence(
+    *,
+    parsed: ParsedSession | None,
+    resolved_state: dict[str, str],
+    current_state: dict[str, str],
+    continuation_brief: dict[str, Any],
+    changed_artifacts: dict[str, Any],
+    continuity_freshness: dict[str, str],
+    repo_state: dict[str, Any],
+    redacted: bool,
+    context: RedactionContext,
+) -> dict[str, Any]:
+    repo_root = _string(repo_state.get("repo_root"))
+    if not repo_root:
+        return _empty_roadmap_evidence(
+            status="unavailable",
+            summary="Repo root was unavailable, so roadmap evidence was not scanned.",
+        )
+
+    root = Path(repo_root).expanduser()
+    if not root.is_dir():
+        return _empty_roadmap_evidence(
+            status="unavailable",
+            summary="Repo root does not exist locally, so roadmap evidence was not scanned.",
+        )
+
+    sources = _roadmap_evidence_sources(root=root, redacted=redacted, context=context)
+    if not sources:
+        return _empty_roadmap_evidence(
+            status="none",
+            summary="No conservative roadmap or status documents were discovered.",
+        )
+
+    activation_reason = _roadmap_activation_reason(
+        parsed=parsed,
+        resolved_state=resolved_state,
+        current_state=current_state,
+        continuation_brief=continuation_brief,
+        changed_artifacts=changed_artifacts,
+        continuity_freshness=continuity_freshness,
+    )
+    source_paths = [source["path"] for source in sources]
+    return {
+        "status": "found",
+        "summary": (
+            f"Found {len(sources)} roadmap/status evidence source(s). "
+            "This slice only cites sources; it does not synthesize or override "
+            "conversation state."
+        ),
+        "sources": sources,
+        "recommended_inspection_order": source_paths[:6],
+        "activation_reason": activation_reason or "none",
+        "include_in_restart_prompt": bool(activation_reason),
+        "used_for_synthesis": False,
+    }
+
+
+def _empty_roadmap_evidence(*, status: str, summary: str) -> dict[str, Any]:
+    return {
+        "status": status,
+        "summary": summary,
+        "sources": [],
+        "recommended_inspection_order": [],
+        "activation_reason": "none",
+        "include_in_restart_prompt": False,
+        "used_for_synthesis": False,
+    }
+
+
+def _roadmap_evidence_sources(
+    *,
+    root: Path,
+    redacted: bool,
+    context: RedactionContext,
+) -> list[dict[str, Any]]:
+    sources: list[dict[str, Any]] = []
+    for path in _candidate_roadmap_paths(root):
+        source = _roadmap_source_from_path(path, root=root)
+        if not source:
+            continue
+        if redacted:
+            source = {
+                **source,
+                "path": redact_text(source["path"], context).text,
+                "excerpt": redact_text(source["excerpt"], context).text,
+            }
+        sources.append(source)
+        if len(sources) >= 8:
+            break
+    return sources
+
+
+def _candidate_roadmap_paths(root: Path) -> list[Path]:
+    candidates: list[Path] = []
+
+    def add(path: Path) -> None:
+        if path.is_file() and path not in candidates:
+            candidates.append(path)
+
+    for relpath in ROADMAP_KNOWN_RELATIVE_PATHS:
+        add(root / relpath)
+
+    for pattern in ROADMAP_GLOB_PATTERNS:
+        for path in sorted(root.glob(pattern)):
+            add(path)
+
+    return candidates
+
+
+def _roadmap_source_from_path(path: Path, *, root: Path) -> dict[str, Any]:
+    try:
+        relpath = path.relative_to(root).as_posix()
+    except ValueError:
+        relpath = path.as_posix()
+
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")[:120_000]
+    except OSError:
+        return {}
+
+    signals = _roadmap_signals(text, relpath)
+    if not signals:
+        return {}
+
+    return {
+        "path": relpath,
+        "kind": _roadmap_source_kind(relpath),
+        "reason": _roadmap_source_reason(relpath),
+        "signals": signals[:6],
+        "excerpt": _roadmap_source_excerpt(text),
+    }
+
+
+def _roadmap_source_kind(path: str) -> str:
+    lowered = path.lower()
+    if "next" in lowered and "step" in lowered:
+        return "next_steps"
+    if "roadmap" in lowered:
+        return "roadmap"
+    if "strategy" in lowered:
+        return "strategy"
+    if "decision" in lowered:
+        return "decision_record"
+    if "status" in lowered:
+        return "status"
+    return "roadmap_candidate"
+
+
+def _roadmap_source_reason(path: str) -> str:
+    kind = _roadmap_source_kind(path)
+    return {
+        "next_steps": "known_next_steps_doc",
+        "roadmap": "roadmap_doc",
+        "strategy": "strategy_doc",
+        "decision_record": "decision_doc",
+        "status": "status_doc",
+    }.get(kind, "roadmap_candidate")
+
+
+def _roadmap_signals(text: str, path: str) -> list[str]:
+    lowered = f"{path}\n{text}".lower()
+    signals: list[str] = []
+    for marker in ROADMAP_SIGNAL_MARKERS:
+        if marker in lowered and marker not in signals:
+            signals.append(marker)
+    return signals
+
+
+def _roadmap_source_excerpt(text: str) -> str:
+    fallback = ""
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        line = stripped.strip("-* ")
+        if not line or line in {"---", "```"}:
+            continue
+        is_heading = stripped.startswith("#")
+        if not fallback and not line.startswith("#"):
+            fallback = line
+        if is_heading and _is_generic_roadmap_heading(line):
+            continue
+        lowered = line.lower()
+        if any(marker in lowered for marker in ROADMAP_SIGNAL_MARKERS):
+            return _excerpt_text(line, limit=220)
+    return _excerpt_text(fallback, limit=220) if fallback else ""
+
+
+def _is_generic_roadmap_heading(line: str) -> bool:
+    cleaned = line.strip("# ").strip().lower()
+    return cleaned in {
+        "next step",
+        "next steps",
+        "roadmap",
+        "status",
+        "current state",
+    }
+
+
+def _roadmap_activation_reason(
+    *,
+    parsed: ParsedSession | None,
+    resolved_state: dict[str, str],
+    current_state: dict[str, str],
+    continuation_brief: dict[str, Any],
+    changed_artifacts: dict[str, Any],
+    continuity_freshness: dict[str, str],
+) -> str:
+    freshness_status = _string(continuity_freshness.get("status"))
+    if freshness_status.startswith("stale_"):
+        return "freshness_warning"
+
+    recommended = " ".join(
+        _string(path) for path in _as_list(changed_artifacts.get("recommended_inspection_order"))
+    ).lower()
+    if "next_steps" in recommended or "roadmap" in recommended:
+        return "roadmap_artifact_referenced"
+
+    haystack = " ".join(
+        (
+            _string(resolved_state.get("latest_user_request")),
+            _string(resolved_state.get("contextual_user_request")),
+            _string(resolved_state.get("resolution_summary")),
+            _string(current_state.get("current_focus")),
+            _string(current_state.get("last_meaningful_outcome")),
+            _string(continuation_brief.get("what_we_were_doing")),
+        )
+    ).lower()
+    if any(
+        marker in haystack
+        for marker in (
+            "handoff prompt",
+            "restart prompt",
+            "roadmap",
+            "next_steps",
+            "feedback",
+            "compare this",
+            "comparemos",
+            "continuation",
+            "continuidad",
+        )
+    ):
+        return "recent_meta_or_roadmap_discussion"
+
+    if parsed and parsed.user_message_count >= 50:
+        return "long_session"
+
+    return ""
+
+
+def _handoff_session_updated_at(
+    metadata: dict[str, Any],
+    parsed: ParsedSession | None,
+) -> str:
+    candidates = [_string(metadata.get("updated_at")), _string(metadata.get("session_timestamp"))]
+    if parsed:
+        candidates.append(_best_parsed_timestamp(parsed))
+    return _max_iso_timestamp(candidates)
+
+
+def _best_parsed_timestamp(parsed: ParsedSession) -> str:
+    candidates = [_string(parsed.session_timestamp)]
+    candidates.extend(_string(block.timestamp) for block in parsed.context_entries)
+    candidates.extend(_string(block.timestamp) for block in parsed.conversation_entries)
+    candidates.extend(_string(block.timestamp) for block in parsed.notable_events)
+    return _max_iso_timestamp(candidates)
+
+
+def _max_iso_timestamp(candidates: list[str]) -> str:
+    best_text = ""
+    best_dt: datetime | None = None
+    fallback: list[str] = []
+    for candidate in candidates:
+        text = _string(candidate)
+        if not text:
+            continue
+        parsed = _parse_iso_timestamp(text)
+        if parsed is None:
+            fallback.append(text)
+            continue
+        if best_dt is None or parsed > best_dt:
+            best_dt = parsed
+            best_text = text
+    if best_text:
+        return best_text
+    return max(fallback) if fallback else ""
+
+
+def _newer_same_cwd_sessions(
+    *,
+    metadata: dict[str, Any],
+    out_dir: Path,
+    session_updated_at: str,
+    linked_child_sessions: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    cwd = _normalize_freshness_path(_string(metadata.get("cwd")))
+    session_id = _string(metadata.get("session_id"))
+    if not cwd or not session_id or not session_updated_at:
+        return []
+
+    child_ids = {
+        _string(child.get("child_session_id"))
+        for child in linked_child_sessions
+        if _string(child.get("child_session_id"))
+    }
+    try:
+        entries = load_index(out_dir)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+    matches: list[dict[str, Any]] = []
+    for entry in entries:
+        candidate_id = _string(entry.get("session_id"))
+        if not candidate_id or candidate_id == session_id or candidate_id in child_ids:
+            continue
+        if _normalize_freshness_path(_string(entry.get("cwd"))) != cwd:
+            continue
+        candidate_updated_at = _string(entry.get("updated_at"))
+        if not _timestamp_after(candidate_updated_at, session_updated_at):
+            continue
+        matches.append(
+            {
+                "session_id": candidate_id,
+                "title": _string(entry.get("title")),
+                "updated_at": candidate_updated_at,
+            }
+        )
+
+    return sorted(
+        matches,
+        key=lambda item: (_string(item.get("updated_at")), _string(item.get("session_id"))),
+        reverse=True,
+    )[:3]
+
+
+def _normalize_freshness_path(path: str) -> str:
+    if not path:
+        return ""
+    try:
+        return Path(path).expanduser().resolve(strict=False).as_posix()
+    except OSError:
+        return path.strip().replace("\\", "/").rstrip("/")
+
+
+def _timestamp_after_with_tolerance(
+    candidate: str,
+    reference: str,
+    *,
+    tolerance: timedelta,
+) -> bool:
+    candidate_dt = _parse_iso_timestamp(candidate)
+    reference_dt = _parse_iso_timestamp(reference)
+    if candidate_dt is None or reference_dt is None:
+        return False
+    return candidate_dt - reference_dt > tolerance
+
+
+def _parse_iso_timestamp(text: str) -> datetime | None:
+    value = _string(text)
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _render_block_payload(
@@ -1002,12 +1846,17 @@ def _build_continuation_brief(
     latest_request = _string(resolved_state.get("latest_user_request"))
     contextual_request = _string(resolved_state.get("contextual_user_request")) or latest_request
     resolution_status = _string(resolved_state.get("request_resolution_status"))
-    latest_resolved_request = contextual_request if resolution_status in {
-        "answered",
-        "handled_with_changes",
-        "completed",
-        "derived_only",
-    } else ""
+    latest_resolved_request = (
+        contextual_request
+        if resolution_status
+        in {
+            "answered",
+            "handled_with_changes",
+            "completed",
+            "derived_only",
+        }
+        else ""
+    )
 
     evidence = []
     has_resolution = resolution_status in {
@@ -1047,10 +1896,16 @@ def _build_continuation_brief(
             "Do not treat this as a live provider resume; continue from derived "
             "handoff artifacts only."
         ),
-        "confidence": "high" if source_available and resolution_status in {
+        "confidence": "high"
+        if source_available
+        and resolution_status
+        in {
             "answered",
             "handled_with_changes",
-        } else "medium" if source_available else "low",
+        }
+        else "medium"
+        if source_available
+        else "low",
         "evidence": evidence,
     }
 
@@ -1104,9 +1959,7 @@ def _build_changed_artifacts(
         _string(resolved_state.get("resolution_summary")),
     ]
     text_sources.extend(
-        _string(item.get("text"))
-        for item in recent_window
-        if isinstance(item, dict)
+        _string(item.get("text")) for item in recent_window if isinstance(item, dict)
     )
     for text in text_sources:
         for path in _path_mentions_from_text(text):
@@ -1162,6 +2015,7 @@ def _artifact_path_seen(items: list[dict[str, str]], path: str) -> bool:
 
 
 def _path_mentions_from_text(text: str) -> list[str]:
+    text = _strip_embedded_restart_prompt_payload(text)
     paths: list[str] = []
     for match in re.finditer(r"\[[^\]]+\]\(([^)]+)\)", text):
         paths.append(match.group(1))
@@ -1194,6 +2048,8 @@ def _normalize_artifact_path(path: str) -> str:
         return ""
     if _looks_like_shell_command_path(cleaned):
         return ""
+    if re.search(r"\s+[/\\]\s+", cleaned):
+        return ""
     if "\n" in cleaned or len(cleaned) > 260:
         return ""
     if re.search(r"\s--?[A-Za-z0-9][\w-]*(?:\s|=)", cleaned):
@@ -1203,6 +2059,13 @@ def _normalize_artifact_path(path: str) -> str:
     return cleaned
 
 
+def _strip_embedded_restart_prompt_payload(text: str) -> str:
+    marker_index = text.lower().find("continue from a local extractive handoff")
+    if marker_index < 0:
+        return text
+    return text[:marker_index].strip()
+
+
 def _resolve_artifact_path(path: str, *, repo_root: str) -> str:
     normalized = _normalize_artifact_path(path)
     if not normalized:
@@ -1210,6 +2073,8 @@ def _resolve_artifact_path(path: str, *, repo_root: str) -> str:
     repo_relative = _repo_relative_artifact_path(normalized, repo_root=repo_root)
     if repo_relative:
         return repo_relative
+    if _is_extensionless_relative_nonexistent_path(normalized, repo_root=repo_root):
+        return ""
     if "/" in normalized or "\\" in normalized:
         return normalized
     if not repo_root or not Path(normalized).suffix:
@@ -1227,6 +2092,23 @@ def _resolve_artifact_path(path: str, *, repo_root: str) -> str:
         return best_match.relative_to(root).as_posix()
     except ValueError:
         return best_match.as_posix()
+
+
+def _is_extensionless_relative_nonexistent_path(path: str, *, repo_root: str) -> bool:
+    if not repo_root:
+        return False
+    cleaned = path.rstrip("/")
+    if not cleaned or Path(cleaned).is_absolute():
+        return False
+    if "/" not in cleaned and "\\" not in cleaned:
+        return False
+    if Path(cleaned).suffix:
+        return False
+
+    root = Path(repo_root).expanduser()
+    if not root.is_dir():
+        return False
+    return not (root / cleaned).exists()
 
 
 def _repo_filename_matches(root: Path, filename: str) -> list[Path]:
@@ -1260,9 +2142,7 @@ def _repo_relative_artifact_path(path: str, *, repo_root: str) -> str:
         return ""
     root = Path(repo_root).expanduser()
     try:
-        relative = candidate.resolve(strict=False).relative_to(
-            root.resolve(strict=False)
-        )
+        relative = candidate.resolve(strict=False).relative_to(root.resolve(strict=False))
     except (OSError, ValueError):
         return ""
     rendered = relative.as_posix()
@@ -1376,6 +2256,26 @@ def _artifact_markdown_lines(items: list[Any]) -> list[str]:
     return lines
 
 
+def _roadmap_evidence_markdown_lines(items: list[Any]) -> list[str]:
+    if not items:
+        return ["- none"]
+    lines: list[str] = []
+    for item in items[:8]:
+        source = _as_dict(item)
+        path = _string(source.get("path")) or "unknown"
+        reason = _string(source.get("reason")) or "unknown"
+        excerpt = _string(source.get("excerpt"))
+        signals = ", ".join(_as_list(source.get("signals"))[:4])
+        suffix_parts = []
+        if signals:
+            suffix_parts.append(f"signals: {signals}")
+        if excerpt:
+            suffix_parts.append(f"excerpt: {excerpt}")
+        suffix = f" - {'; '.join(suffix_parts)}" if suffix_parts else ""
+        lines.append(f"- `{path}` (`{reason}`){suffix}")
+    return lines
+
+
 def _build_decisions_and_invariants(
     *,
     parsed: ParsedSession | None,
@@ -1421,6 +2321,8 @@ def _build_decisions_and_invariants(
 
     for source, text in sources:
         for candidate in _memory_candidates_from_text(text):
+            if source == "context_structural_memory" and _is_low_value_structural_memory(candidate):
+                continue
             item = _memory_item(
                 candidate,
                 source=source,
@@ -1577,9 +2479,7 @@ def _implementation_outcome_heading(line: str) -> str:
     looks_like_heading = stripped.startswith("#") or (
         stripped.endswith(":") and not _is_memory_bullet_line(stripped)
     )
-    if not looks_like_heading and not (
-        stripped.startswith("**") and stripped.endswith("**")
-    ):
+    if not looks_like_heading and not (stripped.startswith("**") and stripped.endswith("**")):
         return ""
     cleaned = stripped.strip("# ").strip()
     cleaned = re.sub(r"^\*\*|\*\*$", "", cleaned).strip()
@@ -1744,9 +2644,7 @@ def _review_memory_heading(line: str) -> str:
     looks_like_heading = stripped.startswith("#") or (
         stripped.endswith(":") and not _is_memory_bullet_line(stripped)
     )
-    if not looks_like_heading and not (
-        stripped.startswith("**") and stripped.endswith("**")
-    ):
+    if not looks_like_heading and not (stripped.startswith("**") and stripped.endswith("**")):
         return ""
     cleaned = stripped.strip("# ").strip()
     cleaned = re.sub(r"^\*\*|\*\*$", "", cleaned).strip()
@@ -1901,7 +2799,9 @@ def _structural_candidate(label: str, text: str) -> str:
 
 
 def _memory_candidates_from_text(text: str) -> list[str]:
-    segments = _memory_text_segments(_strip_memory_ide_wrapper(text))
+    segments = _memory_text_segments(
+        _strip_embedded_restart_prompt_payload(_strip_memory_ide_wrapper(text))
+    )
     if not segments:
         return []
     candidates: list[str] = []
@@ -1961,6 +2861,8 @@ def _clean_memory_statement(text: str) -> str:
     cleaned = cleaned.strip().strip("\"'")
     lowered = cleaned.lower()
     if "exact validation" in lowered or "validation commands" in lowered:
+        return ""
+    if _is_low_value_memory_candidate(cleaned):
         return ""
     if _looks_like_validation_line(cleaned):
         return ""
@@ -2099,6 +3001,75 @@ def _memory_item(
         "source": source,
         "confidence": "medium",
     }
+
+
+def _is_low_value_structural_memory(text: str) -> bool:
+    lowered = text.lower()
+    if lowered.startswith("important boundary: add a minimal test suite that validates:"):
+        return True
+    low_value_markers = (
+        "binary image validation",
+        "the image is validated and normalized",
+        "input validation for binary brand images",
+        "schema behavior",
+        "api health endpoint",
+        "validates: imports",
+        "retrieval contract integrity",
+    )
+    return any(marker in lowered for marker in low_value_markers)
+
+
+def _is_low_value_memory_candidate(text: str) -> bool:
+    lowered = text.lower().strip()
+    if _is_low_value_structural_memory(text):
+        return True
+    if "continue from a local extractive handoff" in lowered:
+        return True
+    if "choose `review`, `plan`, or `implement`" in lowered:
+        return True
+    if "no validation was needed" in lowered:
+        return True
+    if "any assumptions or blockers discovered" in lowered:
+        return True
+    low_value_prefixes = (
+        "initial operating mode:",
+        "do not run commands",
+        "do not implement",
+        "do not skip any section",
+        "before taking action, ask the user",
+        "session:",
+        "session id:",
+        "repo root:",
+        "branch:",
+        "head:",
+        "repo state:",
+        "continuity freshness:",
+        "re-entry posture:",
+        "first response contract:",
+        "required first response format:",
+        "summarize the recovered context",
+        "state the inferred prior-session",
+        "list the next steps you would take if confirmed",
+        "candidate next steps if confirmed:",
+        "confirmation question:",
+        "continuation brief:",
+        "resolved state:",
+        "validation summary:",
+        "dirty state summary:",
+        "changed / key artifacts:",
+        "recommended inspection order:",
+        "artifact links:",
+        "first action:",
+        "pending validation:",
+        "veamos la respuesta",
+        "veamos este feedback",
+        "comparemos",
+        "compare this handoff prompt",
+        "este sería correcto",
+        "este seria correcto",
+        "high finding sobre",
+    )
+    return lowered.startswith(low_value_prefixes)
 
 
 def _append_memory_item(target: list[dict[str, str]], item: dict[str, str]) -> None:
@@ -2291,6 +3262,8 @@ def _build_restart_prompt(
     resolved_state: dict[str, str],
     open_loops: dict[str, str],
     reentry_posture: dict[str, Any],
+    continuity_freshness: dict[str, str],
+    roadmap_evidence: dict[str, Any],
     changed_artifacts: dict[str, Any],
     decisions_and_invariants: dict[str, Any],
     linked_child_sessions: list[dict[str, str]],
@@ -2303,10 +3276,7 @@ def _build_restart_prompt(
         else "unknown"
     )
     child_lines = _restart_prompt_child_lines(linked_child_sessions)
-    contract_lines = [
-        f"- {item}"
-        for item in _as_list(reentry_posture.get("first_turn_contract"))
-    ]
+    contract_lines = [f"- {item}" for item in _as_list(reentry_posture.get("first_turn_contract"))]
     inspection_lines = _restart_prompt_path_lines(
         _as_list(changed_artifacts.get("recommended_inspection_order"))
     )
@@ -2326,6 +3296,14 @@ def _build_restart_prompt(
         _as_list(decisions_and_invariants.get("open_architecture_questions")),
         fallback="none",
     )
+    freshness_lines = _restart_prompt_freshness_lines(continuity_freshness)
+    session_label = _restart_prompt_session_label(
+        session_title=session_title,
+        artifacts=artifacts,
+        session_id=session_id,
+    )
+    snapshot_lines = _restart_prompt_snapshot_lines(artifacts)
+    roadmap_lines = _restart_prompt_roadmap_lines(roadmap_evidence)
     text_lines = [
         "Continue from a local extractive handoff. Do not treat this as a live provider resume.",
         "Initial operating mode: read-only context retrieval and review only.",
@@ -2338,12 +3316,16 @@ def _build_restart_prompt(
             "review, plan, or implement."
         ),
         "",
-        f"Session: {session_title or session_id}",
+        f"Session: {session_label}",
         f"Session ID: {session_id}",
         f"Repo root: {artifacts.get('repo_root') or 'n/a'}",
         f"Branch: {artifacts.get('repo_branch') or 'n/a'}",
         f"HEAD: {artifacts.get('repo_head_commit') or 'n/a'}",
         f"Repo state: {repo_state}",
+        *snapshot_lines,
+        "",
+        "Continuity freshness:",
+        *freshness_lines,
         "",
         "Re-entry posture:",
         f"- Role hint: {reentry_posture.get('role_hint') or 'unknown'}",
@@ -2382,6 +3364,7 @@ def _build_restart_prompt(
         "- Recommended inspection order:",
         *inspection_lines,
         "",
+        *roadmap_lines,
         "Decisions and invariants:",
         "- Decisions:",
         *decision_lines,
@@ -2420,10 +3403,119 @@ def _build_restart_prompt(
     }
 
 
+def _restart_prompt_session_label(
+    *,
+    session_title: str,
+    artifacts: dict[str, Any],
+    session_id: str,
+) -> str:
+    title = session_title.strip()
+    repo_root = _string(artifacts.get("repo_root"))
+    repo_name = Path(repo_root).name if repo_root else ""
+    if title and not _session_title_conflicts_with_repo(title, repo_name):
+        return title
+    if repo_name:
+        return f"{repo_name} continuity handoff"
+    return title or session_id
+
+
+def _session_title_conflicts_with_repo(title: str, repo_name: str) -> bool:
+    if not repo_name:
+        return False
+    title_key = _normalize_repo_name(title)
+    repo_key = _normalize_repo_name(repo_name)
+    if repo_key and repo_key in title_key:
+        return False
+    lowered = title.lower()
+    if not any(
+        marker in lowered
+        for marker in (
+            "source of truth",
+            "repo",
+            "repository",
+            "project",
+            "proyecto",
+        )
+    ):
+        return False
+    mentioned_names = re.findall(r"`([^`]+)`", title)
+    return any(_normalize_repo_name(name) != repo_key for name in mentioned_names)
+
+
+def _normalize_repo_name(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", text.lower())
+
+
+def _restart_prompt_snapshot_lines(artifacts: dict[str, Any]) -> list[str]:
+    mode = _string(artifacts.get("snapshot_mode")) or "none"
+    if mode == "none":
+        return []
+    as_of = _string(artifacts.get("snapshot_as_of")) or "unknown"
+    source_session_id = _string(artifacts.get("snapshot_source_session_id")) or "unknown"
+    return [
+        "",
+        "Historical snapshot:",
+        f"- Mode: {mode}",
+        f"- As of: {as_of}",
+        f"- Source session ID: {source_session_id}",
+        (
+            "- Scope: this prompt is generated from the session prefix up to "
+            "the snapshot boundary, not from the full current thread."
+        ),
+    ]
+
+
+def _restart_prompt_roadmap_lines(roadmap_evidence: dict[str, Any]) -> list[str]:
+    if not roadmap_evidence.get("include_in_restart_prompt"):
+        return []
+    sources = _as_list(roadmap_evidence.get("sources"))
+    if not sources:
+        return []
+
+    lines = [
+        "Roadmap evidence:",
+        (
+            "- Scope: source-attributed repo evidence only; do not override "
+            "the transcript without review."
+        ),
+        "- Used for synthesis: no",
+        f"- Activation reason: {roadmap_evidence.get('activation_reason') or 'unknown'}",
+        "- Sources:",
+    ]
+    for source in sources[:4]:
+        item = _as_dict(source)
+        path = _string(item.get("path")) or "unknown"
+        reason = _string(item.get("reason")) or "unknown"
+        excerpt = _string(item.get("excerpt"))
+        suffix = f" - {excerpt}" if excerpt else ""
+        lines.append(f"  - {path} ({reason}){suffix}")
+    lines.append("")
+    return lines
+
+
 def _restart_prompt_path_lines(paths: list[Any]) -> list[str]:
     if not paths:
         return ["  - none"]
     return [f"  - {_string(path)}" for path in paths[:8]]
+
+
+def _restart_prompt_freshness_lines(freshness: dict[str, str]) -> list[str]:
+    status = _string(freshness.get("status")) or "unknown"
+    warning = _string(freshness.get("warning")) or "none"
+    recommendation = _string(freshness.get("recommendation")) or "n/a"
+    lines = [
+        f"- Status: {status}",
+        f"- Warning: {warning}",
+        f"- Recommendation: {recommendation}",
+    ]
+    latest_same_cwd = _string(freshness.get("latest_same_cwd_session_id"))
+    if latest_same_cwd:
+        updated_at = _string(freshness.get("latest_same_cwd_updated_at")) or "unknown time"
+        lines.append(f"- Newer same-cwd session: {latest_same_cwd} at {updated_at}")
+    repo_head_date = _string(freshness.get("repo_head_commit_date"))
+    if repo_head_date:
+        lines.append(f"- Repo HEAD commit date: {repo_head_date}")
+    return lines
 
 
 def _restart_prompt_memory_lines(items: list[Any], *, fallback: str) -> list[str]:
@@ -2456,9 +3548,7 @@ def _build_reentry_posture(
         )
     ).lower()
     role_hint = (
-        "architect_reviewer"
-        if _looks_like_review_posture(haystack)
-        else "operator_reviewer"
+        "architect_reviewer" if _looks_like_review_posture(haystack) else "operator_reviewer"
     )
     return {
         "role_hint": role_hint,
@@ -2823,10 +3913,7 @@ def _specific_next_action_from_artifacts(
     suffix = (
         "continue the scoped follow-up from the resolved state."
         if resolved_follow_up
-        else (
-            "recover the current unresolved state before choosing review, "
-            "plan, or implement."
-        )
+        else ("recover the current unresolved state before choosing review, plan, or implement.")
     )
     return _excerpt_text(
         f"Inspect {rendered_paths} first, then {suffix}",
@@ -2962,9 +4049,7 @@ def _timestamp_after(candidate: str | None, reference: str) -> bool:
 
 
 def _validation_summary(recent_actions: list[str], resolution_status: str) -> str:
-    validation_actions = [
-        action for action in recent_actions if action.startswith("ran ")
-    ]
+    validation_actions = [action for action in recent_actions if action.startswith("ran ")]
     if validation_actions:
         return "; ".join(validation_actions[:3])
     if resolution_status == "answered":
@@ -3008,9 +4093,7 @@ def _build_current_state(
         current_focus = _excerpt_text(contextual_request, limit=180)
     else:
         current_focus = _current_focus_text(
-            contextual_request
-            or last_substantive_user_request
-            or _string(summary.get("preview"))
+            contextual_request or last_substantive_user_request or _string(summary.get("preview"))
         )
     last_meaningful_outcome = _current_state_outcome(
         resolved_state=resolved_state,
@@ -3028,8 +4111,7 @@ def _build_current_state(
         blocker = "none"
     elif status == "done":
         next_action = (
-            "Review the handoff artifacts and decide whether to start a "
-            "new follow-up task."
+            "Review the handoff artifacts and decide whether to start a new follow-up task."
         )
         blocker = "none"
     else:
@@ -3102,9 +4184,7 @@ def _build_open_loops(
         redacted=redacted,
         context=context,
     )
-    validation_ran = any(
-        action == "ran ./scripts/validate-python-v2" for action in recent_actions
-    )
+    validation_ran = any(action == "ran ./scripts/validate-python-v2" for action in recent_actions)
     pending_validation = (
         "none"
         if validation_ran or current_state.get("status") == "done"
@@ -3486,9 +4566,14 @@ def _epoch_timestamp_to_iso(value: Any) -> str:
     if timestamp > 10_000_000_000:
         timestamp = timestamp // 1000
     try:
-        return datetime.fromtimestamp(timestamp, tz=UTC).replace(microsecond=0).isoformat().replace(
-            "+00:00",
-            "Z",
+        return (
+            datetime.fromtimestamp(timestamp, tz=UTC)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace(
+                "+00:00",
+                "Z",
+            )
         )
     except (OSError, OverflowError, ValueError):
         return ""
@@ -3689,6 +4774,7 @@ def _detect_repo_state(cwd: Path | None) -> dict[str, Any]:
         "repo_root": "",
         "repo_branch": "",
         "repo_head_commit": "",
+        "repo_head_commit_date": "",
         "repo_clean": None,
         "repo_dirty_paths": [],
     }
@@ -3714,6 +4800,12 @@ def _detect_repo_state(cwd: Path | None) -> dict[str, Any]:
             capture_output=True,
             text=True,
         ).stdout.strip()
+        head_commit_date = subprocess.run(
+            ["git", "-C", repo_root, "show", "-s", "--format=%cI", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
         status = subprocess.run(
             ["git", "-C", repo_root, "status", "--porcelain"],
             check=True,
@@ -3728,6 +4820,7 @@ def _detect_repo_state(cwd: Path | None) -> dict[str, Any]:
             "repo_root": repo_root,
             "repo_branch": branch,
             "repo_head_commit": head_commit,
+            "repo_head_commit_date": head_commit_date,
             "repo_clean": not bool(status),
             "repo_dirty_paths": _parse_git_status_paths(status),
         }

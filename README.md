@@ -472,7 +472,26 @@ The handoff now also adds a compact top layer for faster re-entry:
 
 The handoff now includes the first continuity bridge layer: a fresh-session re-entry brief with resolved state, durable decisions, changed artifacts, re-entry posture, and a copy-ready restart prompt. See [docs/continuity-bridge-roadmap.md](docs/continuity-bridge-roadmap.md) for the remaining roadmap.
 
+Restart prompts include a continuity freshness guard. If a selected session is
+older than another exported session in the same working directory, or the repo
+`HEAD` commit is newer than the exported conversation context, the prompt marks
+the handoff as potentially stale and tells the next agent to review the latest
+same-repo context before implementing.
+
+Handoffs also include a conservative `roadmap_evidence` layer. It discovers and
+cites repo-owned roadmap/status docs when they appear useful, but the current
+slice does not use them to rewrite the continuation brief or next action.
+
 Use `codex-session-handoff 019cef3a --restart-prompt` to print only the generated fresh-session prompt.
+
+Use `codex-session-handoff 019cef3a --before-last-user --restart-prompt`
+to print a historical restart prompt from the source session state immediately
+before the latest user message. Use `codex-session-handoff 019cef3a --list-turns`
+to inspect user-message indexes, then
+`codex-session-handoff 019cef3a --before-user 7 --restart-prompt` to cut
+before a specific user message. Use `--as-of 2026-05-04T14:52:55Z` when you need
+an explicit timestamp boundary. Historical handoffs are written with a snapshot
+suffix, so they do not overwrite the canonical handoff for the full session.
 
 Use `codex-session-handoff-audit --limit 20` to sample recent handoffs and check whether `Decisions / Invariants` is producing useful memory or falling back to `no_memory` / `low_confidence`.
 

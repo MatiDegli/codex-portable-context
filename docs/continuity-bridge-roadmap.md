@@ -48,6 +48,7 @@ E2E restart prompt trial:
 - The architecture/boundary prompt initially stayed safe but collapsed to only a mode question.
 - The restart prompt now includes a required first-response format to make context recovery explicit; the architecture/boundary retest produced the expected structured response.
 - Active in-progress prompts now use a context-recovery next action rather than a generic continuation action; an E2E trial confirmed the prompt did not use tools or start implementation.
+- Historical snapshot prompts can now be generated from source-backed sessions with `--list-turns`, `--before-user <index>`, `--before-last-user`, and `--as-of <timestamp>`, without overwriting the canonical full-session handoff.
 - Static prompt compliance checks now verify the first-response contract, required response format, confirmation gate, first-turn tool ban, and safe first action without initializing agents.
 - Manual E2E manifests can now be generated with `codex-session-handoff-audit --write-e2e-manifest <path>`; this writes prompts, formal result templates, and evaluation rubrics but does not launch agents.
 - The local `agent-bridge-public` MCP surface supports bounded send/receive in this environment, but cannot create new threads, so fresh-agent E2E trials currently use local subagents.
@@ -526,6 +527,33 @@ Acceptance checks:
 - Generated cases include the full restart prompt and a rubric for no-tools/no-implementation first responses.
 - Generated manifests expose a stable result schema with `not_run`, `pass`, `fail`, and `blocked` status values.
 
+## Phase 5j: Historical Snapshot Selection
+
+Implementation status: implemented.
+
+Make historical restart-prompt comparison practical for long sessions that kept moving after an interesting handoff point.
+
+Implemented CLI surface:
+
+- `codex-session-handoff <session> --list-turns`
+- `codex-session-handoff <session> --before-user <index> --restart-prompt`
+- `codex-session-handoff <session> --before-last-user --restart-prompt`
+- `codex-session-handoff <session> --as-of <timestamp> --restart-prompt`
+
+Implementation guidance:
+
+- Historical snapshots require local source session access.
+- Snapshot artifacts must use suffixes and must not overwrite the canonical full-session handoff.
+- `--list-turns` should expose enough timestamp/index context for a human to choose the correct cut.
+- `--before-user` should use the same snapshot machinery as `--as-of` and `--before-last-user`.
+- Snapshot prompts should explicitly say they are generated from a session prefix, not the current full thread.
+
+Acceptance checks:
+
+- A user can list turns, choose an index, and generate the restart prompt from immediately before that user message.
+- Historical snapshot JSON/Markdown/reader artifacts are written with stable suffixes.
+- The generated snapshot prompt excludes later prompt-review/meta-discussion text.
+
 ## Phase 6: Provider-Agnostic Continuity Quality
 
 Implementation status: complete.
@@ -568,6 +596,54 @@ Acceptance checks:
   Code, redacted, and source-unavailable handoffs.
 - JSON key parity coverage verifies that consumers can read the same critical
   handoff keys across providers and degraded source modes.
+
+## Phase 7: Roadmap-Aware Synthesis
+
+Implementation status: planned, with Phase 7a evidence discovery implemented.
+
+Close the remaining gap between deterministic extractive handoffs and the better human/architect summaries that long threads can sometimes produce.
+
+Goal:
+
+- Use repo-owned roadmap and status artifacts as conservative synthesis inputs when a session's recent conversation has drifted into meta-discussion, prompt review, or repeated restart-prompt comparisons.
+- Keep the generated prompt aligned with the committed project direction without inventing unstated conclusions.
+- Preserve traceability by listing which roadmap/status files informed the synthesized top layer.
+
+Candidate inputs:
+
+- `docs/next_steps.md`
+- project roadmap documents such as this file
+- latest docs referenced in `recommended_inspection_order`
+- committed experiment summaries or decision records when the repo clearly uses them as source of truth
+
+Initial implemented slice:
+
+- `roadmap_evidence` is now emitted in handoff JSON and Markdown.
+- The generator conservatively discovers repo-owned roadmap/status candidates
+  such as `docs/next_steps.md`, roadmap docs, strategy docs, decision docs,
+  and status docs.
+- Restart prompts include roadmap evidence only when it appears useful, such
+  as stale handoffs, long sessions, meta prompt review, or explicit roadmap
+  references.
+- This first slice sets `used_for_synthesis=false`; it cites evidence but does
+  not alter `continuation_brief`, `decisions_and_invariants`, or
+  `next_best_action`.
+
+Implementation guidance:
+
+- Keep the baseline path deterministic and local.
+- Treat repo docs as evidence, not as an ungrounded replacement for the transcript.
+- Prefer explicit roadmap headings such as active track, paused track, next step, rejected path, invariant, and validation status.
+- Do not let stale docs override a newer resolved conversation without a freshness warning or explicit conflict note.
+- Keep synthesis fields source-attributed so audit can distinguish transcript-derived memory from roadmap-derived memory.
+- Avoid LLM dependency for the first implementation; if an optional LLM summarizer is ever added, it must be disabled by default and clearly marked.
+
+Acceptance checks:
+
+- A long session whose latest turns are meta-review can still produce a restart prompt that names the current roadmap priority.
+- The prompt can cite the roadmap/status docs it used.
+- Conflicts between transcript and roadmap are surfaced as open risks rather than silently resolved.
+- The audit can flag missing or stale roadmap evidence.
 
 ## Validation Strategy
 

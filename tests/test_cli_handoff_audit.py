@@ -18,6 +18,8 @@ HANDOFF_TOP_LEVEL_KEYS = {
     "continuation_brief",
     "resolved_state",
     "current_state",
+    "continuity_freshness",
+    "roadmap_evidence",
     "changed_artifacts",
     "decisions_and_invariants",
     "reentry_posture",
@@ -65,6 +67,24 @@ BRIDGE_SECTION_KEYS = {
         "last_meaningful_outcome",
         "next_recommended_action",
         "known_blocker",
+    },
+    "continuity_freshness": {
+        "status",
+        "warning",
+        "session_updated_at",
+        "repo_head_commit_date",
+        "latest_same_cwd_session_id",
+        "latest_same_cwd_updated_at",
+        "recommendation",
+    },
+    "roadmap_evidence": {
+        "status",
+        "summary",
+        "sources",
+        "recommended_inspection_order",
+        "activation_reason",
+        "include_in_restart_prompt",
+        "used_for_synthesis",
     },
     "changed_artifacts": {
         "summary",
@@ -157,9 +177,10 @@ def test_handoff_audit_cli_json_reports_counts_and_sources(
     assert "context_structural_memory" in payload["items"][0]["sources"]
     assert payload["items"][0]["prompt_compliance"]["status"] == "pass"
     assert payload["items"][0]["source_contract_compliance"]["status"] == "pass"
-    assert payload["items"][0]["source_contract_compliance"]["checks"][
-        "section_sources_complete"
-    ] is True
+    assert (
+        payload["items"][0]["source_contract_compliance"]["checks"]["section_sources_complete"]
+        is True
+    )
     assert payload["summary"]["prompt_compliance_counts"]["pass"] == 1
     assert payload["summary"]["source_contract_counts"]["pass"] == 1
 
@@ -428,9 +449,7 @@ def test_handoff_audit_provider_neutral_source_contract_matrix(
 
     missing_source_out = build_fixture_mirror(tmp_path / "missing-source")
     rich_metadata = json.loads(
-        (missing_source_out / "metadata" / "session-rich.json").read_text(
-            encoding="utf-8"
-        )
+        (missing_source_out / "metadata" / "session-rich.json").read_text(encoding="utf-8")
     )
     Path(rich_metadata["source_file"]).unlink()
     missing_source_payload = audit_json(missing_source_out, "session-rich", capsys)
@@ -498,10 +517,7 @@ def test_handoff_json_key_parity_across_provider_matrix(
     assert handoffs["redacted"]["provider"] == "codex"
     assert handoffs["claude"]["provider"] == "claude-code"
     assert handoffs["codex"]["source_availability"]["mode"] == "local_source_session"
-    assert (
-        handoffs["missing_source"]["source_availability"]["mode"]
-        == "derived_mirror_only"
-    )
+    assert handoffs["missing_source"]["source_availability"]["mode"] == "derived_mirror_only"
     assert handoffs["redacted"]["source_availability"]["mode"] == "derived_mirror_only"
     assert handoffs["claude"]["source_availability"]["mode"] == "local_source_session"
 
@@ -559,8 +575,7 @@ def build_fixture_mirror(
                 "WORKSTATION_REVIEWER_BOOTSTRAP_OK"
             ),
             developer_context=(
-                "Bootstrap thread only. Reply exactly: "
-                "WORKSTATION_REVIEWER_BOOTSTRAP_OK"
+                "Bootstrap thread only. Reply exactly: WORKSTATION_REVIEWER_BOOTSTRAP_OK"
             ),
         )
     if include_active:
@@ -687,9 +702,7 @@ def provider_matrix_handoffs(tmp_path: Path, capsys) -> dict[str, dict]:
 
     missing_source_out = build_fixture_mirror(tmp_path / "missing-source")
     rich_metadata = json.loads(
-        (missing_source_out / "metadata" / "session-rich.json").read_text(
-            encoding="utf-8"
-        )
+        (missing_source_out / "metadata" / "session-rich.json").read_text(encoding="utf-8")
     )
     Path(rich_metadata["source_file"]).unlink()
     audit_json(missing_source_out, "session-rich", capsys)
@@ -709,9 +722,7 @@ def provider_matrix_handoffs(tmp_path: Path, capsys) -> dict[str, dict]:
 
 
 def load_handoff(out_dir: Path, session_id: str) -> dict:
-    return json.loads(
-        (out_dir / "handoffs" / f"{session_id}.json").read_text(encoding="utf-8")
-    )
+    return json.loads((out_dir / "handoffs" / f"{session_id}.json").read_text(encoding="utf-8"))
 
 
 def assert_source_contract_case(
@@ -727,13 +738,9 @@ def assert_source_contract_case(
     item = payload["items"][0]
     assert item["session_id"] == session_id
     assert item["source_contract_compliance"]["status"] == "pass"
-    assert item["source_contract_compliance"]["checks"][
-        "available_sections_consistent"
-    ] is True
+    assert item["source_contract_compliance"]["checks"]["available_sections_consistent"] is True
 
-    handoff = json.loads(
-        (out_dir / "handoffs" / f"{session_id}.json").read_text(encoding="utf-8")
-    )
+    handoff = json.loads((out_dir / "handoffs" / f"{session_id}.json").read_text(encoding="utf-8"))
     source = handoff["source_availability"]
     assert source["provider"] == provider
     assert source["mode"] == mode

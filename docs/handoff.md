@@ -32,6 +32,10 @@ If the original local source session file is still available through `metadata.s
 - a resolved-state layer that separates latest request from resolution status
 - a contextual request field for short follow-ups such as `Pasamelo`
 - changed/key artifact paths from recent text, tool outputs, and git status
+- continuity freshness signals for stale same-repo sessions or repo commits
+  newer than the exported conversation context
+- roadmap evidence discovery that cites repo-owned roadmap/status docs without
+  using them for synthesis yet
 - durable decisions, invariants, rejected paths, and open architecture questions
 - a re-entry posture contract that defaults the first turn to read-only review
 - a copy-ready restart prompt for a fresh local session
@@ -65,20 +69,22 @@ The Markdown handoff is intentionally layered:
 1. `Snapshot`
 2. `Continuation Brief`
 3. `Resolved State`
-4. `Changed / Key Artifacts`
-5. `Decisions / Invariants`
-6. `Re-Entry Posture`
-7. `Restart Prompt`
-8. `Current State`
-9. `Continuity Entry`
-10. `Artifacts`
-11. `Operator Note Template`
-12. `Compaction Summaries` when available
-13. `Linked Child Sessions` when available
-14. `Recent Actions (normalized)`
-15. `Open Loops / Risks`
-16. `Transcript Excerpt`
-17. raw audit-trail sections
+4. `Continuity Freshness`
+5. `Roadmap Evidence`
+6. `Changed / Key Artifacts`
+7. `Decisions / Invariants`
+8. `Re-Entry Posture`
+9. `Restart Prompt`
+10. `Current State`
+11. `Continuity Entry`
+12. `Artifacts`
+13. `Operator Note Template`
+14. `Compaction Summaries` when available
+15. `Linked Child Sessions` when available
+16. `Recent Actions (normalized)`
+17. `Open Loops / Risks`
+18. `Transcript Excerpt`
+19. raw audit-trail sections
 
 The top of the handoff is optimized for quick re-entry. The lower sections stay extractive and verbose on purpose for traceability.
 
@@ -98,6 +104,37 @@ For the exact minimum cross-device package expected on the destination machine, 
 - it does not replace reading the full transcript when details matter
 
 `Continuation Brief`, `Resolved State`, `Current State`, and `Recent Actions` are still heuristic and extractive. They are meant to improve operator speed, not to replace the full transcript when exact detail matters.
+
+`Continuity Freshness` is a guardrail for old-session prompts. It warns when a
+newer exported session appears to use the same working directory, or when the
+current repo `HEAD` commit date is newer than the exported conversation
+timestamp. In that case the restart prompt tells the next agent to treat the
+brief as potentially stale and to confirm the active roadmap before
+implementing.
+
+`Roadmap Evidence` is a conservative attribution layer. It discovers
+repo-owned roadmap or status documents such as `docs/next_steps.md`, roadmap
+docs, strategy docs, decision docs, and status docs. The current implementation
+does not use those docs to rewrite the brief, decisions, or next action; it only
+cites sources and marks `used_for_synthesis=false`.
+
+Historical handoff snapshots are available for source-backed sessions:
+
+```bash
+codex-session-handoff 019cef3a --list-turns
+codex-session-handoff 019cef3a --before-user 7 --restart-prompt
+codex-session-handoff 019cef3a --before-last-user --restart-prompt
+codex-session-handoff 019cef3a --as-of 2026-05-04T14:52:55Z --restart-prompt
+```
+
+`--list-turns` prints user-message indexes and timestamps. `--before-user`
+reconstructs the handoff from the conversation prefix before that 1-based user
+message index. `--before-last-user` is the shortcut for the latest user
+message. `--as-of` cuts at an explicit ISO timestamp. Snapshot artifacts use
+suffixes such as `handoffs/<session>.before-user-7.json`,
+`handoffs/<session>.before-last-user.json`, or
+`handoffs/<session>.asof-20260504T145255Z.json`, leaving the full-session
+handoff untouched.
 
 `Open Loops / Risks` follows the same rule: it only surfaces conservative signals such as missing validation, obvious recent failures, open questions that are explicit in the user text, and operational risks like missing local source or a dirty repo.
 

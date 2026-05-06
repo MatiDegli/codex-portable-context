@@ -29,53 +29,46 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
         == "provider_enrichment"
     )
     assert payload["source_availability"]["available_sections"]["restart_prompt"] is True
+    assert payload["source_availability"]["available_sections"]["continuity_freshness"] is True
+    assert payload["source_availability"]["available_sections"]["roadmap_evidence"] is True
     assert payload["source_availability"]["available_sections"]["recent_window"] is True
     assert payload["source_availability"]["available_sections"]["recent_tool_activity"] is True
-    assert (
-        payload["session"]["last_substantive_user_request"]
-        == "Why is the IDE output empty?"
-    )
+    assert payload["session"]["last_substantive_user_request"] == "Why is the IDE output empty?"
     assert payload["current_state"]["status"] == "in_progress"
-    assert (
-        payload["current_state"]["current_focus"]
-        == "Why is the IDE output empty?"
+    assert payload["current_state"]["current_focus"] == "Why is the IDE output empty?"
+    assert payload["current_state"]["next_recommended_action"] == (
+        "Start a fresh local session and continue from this handoff's Current State and Open Loops."
     )
-    assert (
-        payload["current_state"]["next_recommended_action"]
-        == (
-            "Start a fresh local session and continue from this handoff's "
-            "Current State and Open Loops."
-        )
-    )
-    assert (
-        payload["continuation_brief"]["next_best_action"]
-        == (
-            "Inspect `README.md` first, then recover the current unresolved "
-            "state before choosing review, plan, or implement."
-        )
+    assert payload["continuation_brief"]["next_best_action"] == (
+        "Inspect `README.md` first, then recover the current unresolved "
+        "state before choosing review, plan, or implement."
     )
     assert payload["continuation_brief"]["what_we_were_doing"] == "Why is the IDE output empty?"
     assert payload["continuation_brief"]["latest_resolved_request"] == ""
-    assert (
-        payload["resolved_state"]["latest_user_request"]
-        == "Why is the IDE output empty?"
-    )
+    assert payload["resolved_state"]["latest_user_request"] == "Why is the IDE output empty?"
     assert payload["resolved_state"]["request_resolution_status"] == "unanswered"
     assert payload["resolved_state"]["validation_summary"] == "ran ./scripts/validate-python-v2"
     assert payload["restart_prompt"]["kind"] == "fresh_session_reentry"
+    assert payload["continuity_freshness"]["status"] in {
+        "fresh",
+        "stale_repo_advanced_after_session",
+        "stale_newer_same_cwd_session",
+        "stale_newer_same_cwd_and_repo_advanced",
+        "unknown",
+    }
+    assert "Continuity freshness:" in payload["restart_prompt"]["text"]
     assert payload["reentry_posture"]["initial_mode"] == "read_only_context_retrieval"
     assert payload["reentry_posture"]["requires_confirmation_before_changes"] is True
     assert "run_commands" in payload["reentry_posture"]["forbidden_first_turn_actions"]
     assert payload["decisions_and_invariants"]["confidence"] in {"low", "medium", "high"}
-    changed_paths = {
-        item["path"]: item
-        for item in payload["changed_artifacts"]["changed_paths"]
-    }
+    assert payload["roadmap_evidence"]["used_for_synthesis"] is False
+    changed_paths = {item["path"]: item for item in payload["changed_artifacts"]["changed_paths"]}
     assert changed_paths["README.md"]["source"] == "tool_output_updated_files"
     assert "README.md" in payload["changed_artifacts"]["recommended_inspection_order"]
     assert "Continue from a local extractive handoff." in payload["restart_prompt"]["text"]
-    assert "Initial operating mode: read-only context retrieval and review only." in (
-        payload["restart_prompt"]["text"]
+    assert (
+        "Initial operating mode: read-only context retrieval and review only."
+        in (payload["restart_prompt"]["text"])
     )
     assert "Do not run commands" in payload["restart_prompt"]["text"]
     assert "Ask the user to choose one mode" in payload["restart_prompt"]["text"]
@@ -86,18 +79,9 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     assert "Child Fixture Session" in payload["restart_prompt"]["text"]
     assert "Changed / key artifacts:" in payload["restart_prompt"]["text"]
     assert "Decisions and invariants:" in payload["restart_prompt"]["text"]
-    assert (
-        payload["continuity_entry"]["primary_artifact_relpath"]
-        == "handoffs/session-5678.md"
-    )
-    assert (
-        payload["continuity_entry"]["machine_artifact_relpath"]
-        == "handoffs/session-5678.json"
-    )
-    assert (
-        payload["continuity_entry"]["transcript_fallback_relpath"]
-        == "sessions/session-5678.md"
-    )
+    assert payload["continuity_entry"]["primary_artifact_relpath"] == "handoffs/session-5678.md"
+    assert payload["continuity_entry"]["machine_artifact_relpath"] == "handoffs/session-5678.json"
+    assert payload["continuity_entry"]["transcript_fallback_relpath"] == "sessions/session-5678.md"
     assert payload["continuity_entry"]["destination_workflow"]
     assert payload["artifacts"]["handoff_markdown_relpath"] == "handoffs/session-5678.md"
     assert payload["artifacts"]["handoff_json_relpath"] == "handoffs/session-5678.json"
@@ -110,9 +94,7 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     assert payload["open_loops"]["unresolved_failure"] == "none"
     assert payload["open_loops"]["expected_next_command"] == "none"
     expected_risk = (
-        "none"
-        if payload["artifacts"]["repo_clean"] is True
-        else "Repo has uncommitted changes."
+        "none" if payload["artifacts"]["repo_clean"] is True else "Repo has uncommitted changes."
     )
     assert payload["open_loops"]["operational_risk"] == expected_risk
     assert payload["recent_actions"]
@@ -163,6 +145,8 @@ def test_handoff_cli_generates_bundle_for_latest_session(tmp_path: Path, capsys)
     markdown = (out_dir / "handoffs" / "session-5678.md").read_text(encoding="utf-8")
     reader = (out_dir / "reader" / "session-5678.html").read_text(encoding="utf-8")
     assert "## Continuation Brief" in markdown
+    assert "## Continuity Freshness" in markdown
+    assert "## Roadmap Evidence" in markdown
     assert "## Resolved State" in markdown
     assert "## Re-Entry Posture" in markdown
     assert "## Changed / Key Artifacts" in markdown
@@ -214,8 +198,7 @@ def test_handoff_cli_prints_markdown_path_and_handles_missing_source(
     assert payload["source_availability"]["available"] is False
     assert payload["source_availability"]["mode"] == "derived_mirror_only"
     assert (
-        payload["source_availability"]["section_sources"]["continuation_brief"]
-        == "derived_mirror"
+        payload["source_availability"]["section_sources"]["continuation_brief"] == "derived_mirror"
     )
     assert payload["source_availability"]["section_sources"]["recent_window"] == "unavailable"
     assert payload["source_availability"]["available_sections"]["restart_prompt"] is True
@@ -254,15 +237,234 @@ def test_handoff_cli_prints_restart_prompt_only(
     assert str(out_dir / "handoffs" / "session-5678.md") not in captured.out
 
 
+def test_handoff_cli_restart_prompt_sanitizes_conflicting_repo_title(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        second_thread_name="Source of truth: inspect `Portfolio-OS` before continuing.",
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "session-5678", "--restart-prompt"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert f"Session: {repo_root().name} continuity handoff" in captured.out
+    assert "Session: Source of truth: inspect `Portfolio-OS`" not in captured.out
+
+
+def test_handoff_cli_generates_before_last_user_restart_snapshot(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request="Review weakly supervised scoring.",
+        final_answer_after_request=True,
+        final_answer_message=(
+            "**Recommendation**\n"
+            "- Open `low_trust_semantic_selection_audit_v1` before another reranker."
+        ),
+        post_final_user_message=(
+            "Compare this restart prompt with the current one.\n\n"
+            "Continue from a local extractive handoff."
+        ),
+    )
+
+    exit_code = main(
+        [
+            "--out-dir",
+            str(out_dir),
+            "session-5678",
+            "--before-last-user",
+            "--restart-prompt",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Historical snapshot:" in captured.out
+    assert "- Mode: before_last_user" in captured.out
+    assert "Review weakly supervised scoring." in captured.out
+    assert "low_trust_semantic_selection_audit_v1" in captured.out
+    assert "Compare this restart prompt" not in captured.out
+    assert (out_dir / "handoffs" / "session-5678.before-last-user.json").is_file()
+    payload = json.loads(
+        (out_dir / "handoffs" / "session-5678.before-last-user.json").read_text(encoding="utf-8")
+    )
+    assert payload["artifacts"]["snapshot_mode"] == "before_last_user"
+    assert payload["artifacts"]["handoff_json_relpath"] == (
+        "handoffs/session-5678.before-last-user.json"
+    )
+
+
+def test_handoff_cli_generates_as_of_restart_snapshot(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request="Review weakly supervised scoring.",
+        final_answer_after_request=True,
+        final_answer_message=(
+            "**Recommendation**\n"
+            "- Open `low_trust_semantic_selection_audit_v1` before another reranker."
+        ),
+        post_final_user_message="Compare this restart prompt with the current one.",
+    )
+
+    exit_code = main(
+        [
+            "--out-dir",
+            str(out_dir),
+            "session-5678",
+            "--as-of",
+            "2026-03-16T10:05:07Z",
+            "--restart-prompt",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- Mode: as_of" in captured.out
+    assert "- As of: 2026-03-16T10:05:07Z" in captured.out
+    assert "low_trust_semantic_selection_audit_v1" in captured.out
+    assert "Compare this restart prompt" not in captured.out
+    assert (out_dir / "handoffs" / "session-5678.asof-20260316T100507Z.json").is_file()
+
+
+def test_handoff_cli_lists_user_turn_boundaries(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        prior_wrapped_request="Choose the scoring lane.",
+        wrapped_request="Review weakly supervised scoring.",
+        final_answer_after_request=True,
+        post_final_user_message="Compare this restart prompt with the current one.",
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "session-5678", "--list-turns"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "INDEX\tTIMESTAMP\tPREVIEW" in captured.out
+    assert "1\t2026-03-16T10:05:06Z\tPlease inspect Second Fixture Session." in captured.out
+    assert "2\t2026-03-16T10:05:06Z\tChoose the scoring lane." in captured.out
+    assert "3\t2026-03-16T10:05:06Z\tReview weakly supervised scoring." in captured.out
+    assert (
+        "4\t2026-03-16T10:05:08Z\tCompare this restart prompt with the current one." in captured.out
+    )
+
+
+def test_handoff_cli_generates_before_user_restart_snapshot(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request="Review weakly supervised scoring.",
+        final_answer_after_request=True,
+        final_answer_message=(
+            "**Recommendation**\n"
+            "- Open `low_trust_semantic_selection_audit_v1` before another reranker."
+        ),
+        post_final_user_message="Compare this restart prompt with the current one.",
+    )
+
+    exit_code = main(
+        [
+            "--out-dir",
+            str(out_dir),
+            "session-5678",
+            "--before-user",
+            "3",
+            "--restart-prompt",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Historical snapshot:" in captured.out
+    assert "- Mode: before_user" in captured.out
+    assert "Review weakly supervised scoring." in captured.out
+    assert "low_trust_semantic_selection_audit_v1" in captured.out
+    assert "Compare this restart prompt" not in captured.out
+    assert (out_dir / "handoffs" / "session-5678.before-user-3.json").is_file()
+
+
+def test_handoff_cli_discovers_roadmap_evidence_without_synthesis(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request="Compare this restart prompt with the current roadmap.",
+        final_answer_after_request=True,
+        final_answer_message=(
+            "Recommendation:\n"
+            "- Use roadmap evidence as attribution only before synthesis is implemented."
+        ),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "session-5678"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    evidence = payload["roadmap_evidence"]
+    source_paths = {source["path"] for source in evidence["sources"]}
+
+    assert evidence["status"] == "found"
+    assert evidence["used_for_synthesis"] is False
+    assert evidence["include_in_restart_prompt"] is True
+    assert evidence["activation_reason"] in {
+        "freshness_warning",
+        "recent_meta_or_roadmap_discussion",
+    }
+    assert any("roadmap" in path for path in source_paths)
+    assert "Roadmap evidence:" in payload["restart_prompt"]["text"]
+    assert "Used for synthesis: no" in payload["restart_prompt"]["text"]
+
+
+def test_handoff_cli_warns_when_newer_same_cwd_session_exists(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(tmp_path)
+    index_path = out_dir / "sessions-index.jsonl"
+    newer_entry = {
+        "session_id": "session-newer-same-cwd",
+        "title": "Newer Same CWD Session",
+        "updated_at": "2026-03-16T10:10:00Z",
+        "cwd": "/home/tester/project",
+    }
+    with index_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(newer_entry) + "\n")
+
+    exit_code = main(["--out-dir", str(out_dir), "session-1234"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-1234.json").read_text(encoding="utf-8"))
+    freshness = payload["continuity_freshness"]
+    assert freshness["status"] == "stale_newer_same_cwd_session"
+    assert freshness["latest_same_cwd_session_id"] == "session-newer-same-cwd"
+    assert "newer exported session" in freshness["warning"].lower()
+    assert "inspect the latest same-repo session" in freshness["recommendation"]
+    assert "Continuity freshness:" in payload["restart_prompt"]["text"]
+    assert "stale_newer_same_cwd_session" in payload["restart_prompt"]["text"]
+
+
 def test_handoff_cli_rejects_print_and_restart_prompt_together(
     tmp_path: Path,
     capsys,
 ) -> None:
     out_dir = build_fixture_mirror(tmp_path)
 
-    exit_code = main(
-        ["--out-dir", str(out_dir), "session-5678", "--print", "--restart-prompt"]
-    )
+    exit_code = main(["--out-dir", str(out_dir), "session-5678", "--print", "--restart-prompt"])
     captured = capsys.readouterr()
 
     assert exit_code == 1
@@ -330,15 +532,10 @@ def test_handoff_cli_marks_question_answered_after_final_response(
     payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
     assert payload["resolved_state"]["request_resolution_status"] == "handled_with_changes"
     assert (
-        payload["continuation_brief"]["latest_resolved_request"]
-        == "Why is the IDE output empty?"
+        payload["continuation_brief"]["latest_resolved_request"] == "Why is the IDE output empty?"
     )
-    assert (
-        payload["continuation_brief"]["next_best_action"]
-        == (
-            "Inspect `README.md` first, then continue the scoped follow-up from "
-            "the resolved state."
-        )
+    assert payload["continuation_brief"]["next_best_action"] == (
+        "Inspect `README.md` first, then continue the scoped follow-up from the resolved state."
     )
     assert payload["open_loops"]["open_question"] == "none"
 
@@ -484,12 +681,9 @@ def test_handoff_cli_expands_long_pasamelo_follow_up(
     assert exit_code == 0
     payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
     assert payload["resolved_state"]["latest_user_request_is_context_dependent"] == "yes"
-    assert (
-        payload["resolved_state"]["contextual_user_request"]
-        == (
-            "Should we write a research prompt first? Follow-up request: "
-            "Pasamelo, and include subagents for recursive research."
-        )
+    assert payload["resolved_state"]["contextual_user_request"] == (
+        "Should we write a research prompt first? Follow-up request: "
+        "Pasamelo, and include subagents for recursive research."
     )
 
 
@@ -579,6 +773,93 @@ def test_handoff_cli_extracts_structural_context_decisions(
     assert "context_structural_memory" in memory["evidence"][0]
 
 
+def test_handoff_cli_filters_low_value_structural_memory_noise(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        developer_context=(
+            "## Important boundary\n\n"
+            "- binary image validation\n"
+            "- Add a minimal test suite that validates: schema behavior\n"
+            "- Add a minimal test suite that validates: API health endpoint\n\n"
+            "## Stable boundary\n\n"
+            "- repo/workflow truth remains repo-owned\n"
+        ),
+        final_answer_after_request=True,
+        final_answer_message="The final answer handled a small follow-up.",
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    memory = payload["decisions_and_invariants"]
+    all_statements = " ".join(
+        item["statement"]
+        for key in ("decisions", "invariants", "rejected_paths", "open_architecture_questions")
+        for item in memory[key]
+    )
+    assert "repo/workflow truth remains repo-owned" in all_statements
+    assert "binary image validation" not in all_statements
+    assert "schema behavior" not in all_statements
+    assert "API health endpoint" not in all_statements
+
+
+def test_handoff_cli_ignores_embedded_restart_prompt_memory_and_paths(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    out_dir = build_fixture_mirror(
+        tmp_path,
+        wrapped_request=(
+            "Compare this handoff prompt with the current one.\n\n"
+            "Continue from a local extractive handoff. Do not treat this as a "
+            "live provider resume.\n"
+            "Initial operating mode: read-only context retrieval and review only.\n"
+            "Session: Source of truth: inspect `algoritmo-marcas`.\n"
+            "First response contract:\n"
+            "- List the next steps you would take if confirmed.\n"
+            "Changed / key artifacts:\n"
+            "- Recommended inspection order:\n"
+            "  - pairwise/runtime\n"
+            "  - pattern_chain / proxy / reservation\n"
+            "Decisions and invariants:\n"
+            "- Important boundary: binary image validation\n"
+            "- Validation summary: No validation was needed for the latest answer-only turn.\n"
+        ),
+        final_answer_after_request=True,
+        final_answer_message=(
+            "**Recommendation**\n- Use `docs/handoff.md` as the handoff source of truth."
+        ),
+    )
+
+    exit_code = main(["--out-dir", str(out_dir), "--latest"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
+    memory = payload["decisions_and_invariants"]
+    all_statements = " ".join(
+        item["statement"]
+        for key in ("decisions", "invariants", "rejected_paths", "open_architecture_questions")
+        for item in memory[key]
+    )
+    recommended = payload["changed_artifacts"]["recommended_inspection_order"]
+
+    assert "handoff source of truth" in all_statements
+    assert "Initial operating mode" not in all_statements
+    assert "First response contract" not in all_statements
+    assert "binary image validation" not in all_statements
+    assert "Validation summary" not in all_statements
+    assert "List the next steps" not in all_statements
+    assert "docs/handoff.md" in recommended
+    assert "pairwise/runtime" not in recommended
+    assert "pattern_chain / proxy / reservation" not in recommended
+
+
 def test_handoff_cli_extracts_review_findings_and_risks(
     tmp_path: Path,
     capsys,
@@ -633,8 +914,7 @@ def test_handoff_cli_uses_review_recommendation_for_next_action(
         wrapped_request="Review descriptor coverage.",
         final_answer_after_request=True,
         final_answer_message=(
-            "**Recommendation**\n"
-            "- Validate descriptor coverage before widening retrieval."
+            "**Recommendation**\n- Validate descriptor coverage before widening retrieval."
         ),
     )
 
@@ -643,12 +923,9 @@ def test_handoff_cli_uses_review_recommendation_for_next_action(
 
     assert exit_code == 0
     payload = json.loads((out_dir / "handoffs" / "session-5678.json").read_text(encoding="utf-8"))
-    assert (
-        payload["continuation_brief"]["next_best_action"]
-        == (
-            "Continue from the captured recommendation: Validate descriptor "
-            "coverage before widening retrieval."
-        )
+    assert payload["continuation_brief"]["next_best_action"] == (
+        "Continue from the captured recommendation: Validate descriptor "
+        "coverage before widening retrieval."
     )
 
 
@@ -818,9 +1095,7 @@ def test_handoff_cli_uses_same_bridge_contract_for_claude_code(
     capsys.readouterr()
 
     assert exit_code == 0
-    payload = json.loads(
-        (out_dir / "handoffs" / f"{session_id}.json").read_text(encoding="utf-8")
-    )
+    payload = json.loads((out_dir / "handoffs" / f"{session_id}.json").read_text(encoding="utf-8"))
     assert payload["provider"] == "claude-code"
     assert payload["continuation_brief"]
     assert payload["resolved_state"]
@@ -851,6 +1126,8 @@ def test_handoff_cli_uses_same_bridge_contract_for_claude_code(
         "continuation_brief",
         "resolved_state",
         "current_state",
+        "continuity_freshness",
+        "roadmap_evidence",
         "changed_artifacts",
         "decisions_and_invariants",
         "reentry_posture",
@@ -866,9 +1143,7 @@ def test_handoff_cli_uses_same_bridge_contract_for_claude_code(
     assert source["available_sections"]["recent_tool_activity"] is False
     assert source["available_sections"]["compaction_summaries"] is False
     assert source["available_sections"]["linked_child_sessions"] is False
-    assert source["limitations"] == [
-        "Provider adapter does not expose normalized tool activity."
-    ]
+    assert source["limitations"] == ["Provider adapter does not expose normalized tool activity."]
 
 
 def build_fixture_mirror(
@@ -881,6 +1156,8 @@ def build_fixture_mirror(
     prior_wrapped_request: str = "",
     developer_context: str = "",
     tool_updated_files: tuple[str, ...] = ("README.md",),
+    second_thread_name: str = "Second Fixture Session",
+    post_final_user_message: str = "",
 ) -> Path:
     codex_home = tmp_path / ".codex"
     source_dir = codex_home / "sessions" / "2026" / "03" / "16"
@@ -896,7 +1173,7 @@ def build_fixture_mirror(
         source_dir / "rollout-2026-03-16T10-05-00-fixture-session-b.jsonl",
         session_id="session-5678",
         updated_at="2026-03-16T10:05:06Z",
-        thread_name="Second Fixture Session",
+        thread_name=second_thread_name,
         cwd=str(repo_root()),
         wrapped_request=wrapped_request,
         prior_wrapped_request=prior_wrapped_request,
@@ -906,6 +1183,7 @@ def build_fixture_mirror(
         final_answer_message=final_answer_message,
         developer_context=developer_context,
         tool_updated_files=tool_updated_files,
+        post_final_user_message=post_final_user_message,
     )
     write_session(
         source_dir / "rollout-2026-03-16T10-04-00-child-session.jsonl",
@@ -929,7 +1207,7 @@ def build_fixture_mirror(
                 json.dumps(
                     {
                         "id": "session-5678",
-                        "thread_name": "Second Fixture Session",
+                        "thread_name": second_thread_name,
                         "updated_at": "2026-03-16T10:05:06Z",
                     }
                 ),
@@ -1061,6 +1339,7 @@ def write_session(
     final_answer_message: str = "The final answer explains why the IDE output was empty.",
     developer_context: str = "",
     tool_updated_files: tuple[str, ...] = ("README.md",),
+    post_final_user_message: str = "",
 ) -> None:
     records = [
         {
@@ -1207,6 +1486,17 @@ def write_session(
                     "type": "agent_message",
                     "message": final_answer_message,
                     "phase": "final_answer",
+                },
+            }
+        )
+    if post_final_user_message:
+        records.append(
+            {
+                "timestamp": "2026-03-16T10:05:08Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "user_message",
+                    "message": post_final_user_message,
                 },
             }
         )
