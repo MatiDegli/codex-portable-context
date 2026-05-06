@@ -34,16 +34,10 @@ class CodexSessionAdapter:
         return home_dir / "sessions"
 
     def iter_session_files(self, source_dir: Path) -> Iterator[Path]:
-        yield from sorted(
-            path
-            for path in source_dir.rglob("rollout-*.jsonl")
-            if path.is_file()
-        )
+        yield from sorted(path for path in source_dir.rglob("rollout-*.jsonl") if path.is_file())
 
     def build_source_context(self, home_dir: Path) -> ProviderSourceContext:
-        return ProviderSourceContext(
-            native_index_by_session_id=load_source_session_index(home_dir)
-        )
+        return ProviderSourceContext(native_index_by_session_id=load_source_session_index(home_dir))
 
     def describe_session(
         self,
@@ -55,7 +49,11 @@ class CodexSessionAdapter:
         source_index = source_context.native_index_by_session_id or {}
         source_meta = source_index.get(parsed.session_id, {})
         thread_name = _string_value(source_meta.get("thread_name"))
-        updated_at = _string_value(source_meta.get("updated_at")) or _file_updated_at(session_file)
+        updated_at = _best_updated_at(
+            _string_value(source_meta.get("updated_at")),
+            parsed,
+            session_file,
+        )
         return ProviderSessionDescriptor(
             provider=parsed.provider,
             provider_session_id=parsed.provider_session_id,
@@ -83,6 +81,27 @@ class CodexSessionAdapter:
 def _file_updated_at(path: Path) -> str:
     timestamp = datetime.fromtimestamp(path.stat().st_mtime_ns / 1_000_000_000, tz=UTC)
     return timestamp.isoformat().replace("+00:00", "Z")
+
+
+def _best_updated_at(
+    indexed_updated_at: str | None,
+    parsed: ParsedSession,
+    session_file: Path,
+) -> str:
+    candidates = [indexed_updated_at, _best_parsed_timestamp(parsed)]
+    timestamps = [candidate for candidate in candidates if candidate]
+    if timestamps:
+        return max(timestamps)
+    return _file_updated_at(session_file)
+
+
+def _best_parsed_timestamp(parsed: ParsedSession) -> str | None:
+    candidates = [parsed.session_timestamp]
+    candidates.extend(block.timestamp for block in parsed.context_entries)
+    candidates.extend(block.timestamp for block in parsed.conversation_entries)
+    candidates.extend(block.timestamp for block in parsed.notable_events)
+    timestamps = [candidate for candidate in candidates if candidate]
+    return max(timestamps) if timestamps else None
 
 
 def _string_value(value: object) -> str | None:

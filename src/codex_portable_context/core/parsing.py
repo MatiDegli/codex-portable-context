@@ -127,6 +127,8 @@ def parse_session_file(
         payload_type = str(payload_dict.get("type") or "")
 
         if record_type == "session_meta":
+            if session_meta:
+                continue
             session_meta = payload_dict
             continue
 
@@ -224,10 +226,7 @@ def parse_session_file(
                 )
             )
 
-    session_id = (
-        _string_value(session_meta.get("id"))
-        or path.name.removesuffix(".jsonl")
-    )
+    session_id = _string_value(session_meta.get("id")) or path.name.removesuffix(".jsonl")
 
     return ParsedSession(
         provider=provider_id,

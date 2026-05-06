@@ -3,9 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from codex_portable_context.core.parsing import ParsedSession
+from codex_portable_context.core.parsing import ParsedSession, RenderBlock
 from codex_portable_context.providers import get_provider_adapter, registered_provider_ids
 from codex_portable_context.providers.base import ProviderSourceContext
+
+
+def make_block(kind: str, timestamp: str, text: str) -> RenderBlock:
+    return RenderBlock(kind=kind, label=kind.title(), timestamp=timestamp, text=text)
 
 
 def test_provider_registry_exposes_codex_adapter() -> None:
@@ -132,6 +136,89 @@ def test_codex_adapter_describes_session_with_source_context_and_file_timestamp(
     assert descriptor.updated_at == "2026-03-16T10:00:06Z"
 
 
+def test_codex_adapter_prefers_parsed_timestamp_when_index_is_stale(
+    tmp_path: Path,
+) -> None:
+    session_file = tmp_path / "rollout-2026-03-16T10-00-00-session.jsonl"
+    session_file.write_text("", encoding="utf-8")
+    adapter = get_provider_adapter("codex")
+    parsed = ParsedSession(
+        provider="codex",
+        provider_session_id="session-1234",
+        source_file=session_file,
+        source_relpath="2026/03/16/rollout-2026-03-16T10-00-00-session.jsonl",
+        session_id="session-1234",
+        session_timestamp="2026-03-16T09:59:00Z",
+        cwd=None,
+        originator=None,
+        source=None,
+        model_provider=None,
+        cli_version=None,
+        context_entries=[],
+        conversation_entries=[make_block("user", "2026-03-16T10:15:00Z", "Later request.")],
+        notable_events=[],
+        user_messages=[],
+        assistant_messages=[],
+        event_count=0,
+        context_entry_count=0,
+        user_message_count=0,
+        assistant_message_count=0,
+        tool_call_count=0,
+        tool_output_count=0,
+        notable_event_count=0,
+    )
+
+    descriptor = adapter.describe_session(
+        parsed=parsed,
+        source_context=ProviderSourceContext(
+            native_index_by_session_id={
+                "session-1234": {
+                    "thread_name": "Fixture Session",
+                    "updated_at": "2026-03-16T10:00:06Z",
+                }
+            }
+        ),
+        session_file=session_file,
+    )
+
+    assert descriptor.updated_at == "2026-03-16T10:15:00Z"
+
+
+def test_codex_adapter_uses_first_session_meta_as_identity(tmp_path: Path) -> None:
+    source_dir = tmp_path / "sessions"
+    source_dir.mkdir()
+    session_file = source_dir / "rollout-2026-03-16T10-00-00-child.jsonl"
+    records = [
+        {
+            "timestamp": "2026-03-16T10:00:00Z",
+            "type": "session_meta",
+            "payload": {"id": "child-session", "cwd": "/tmp/project"},
+        },
+        {
+            "timestamp": "2026-03-16T10:00:01Z",
+            "type": "session_meta",
+            "payload": {"id": "parent-session", "cwd": "/tmp/project"},
+        },
+        {
+            "timestamp": "2026-03-16T10:00:02Z",
+            "type": "event_msg",
+            "payload": {"type": "user_message", "message": "Child task."},
+        },
+    ]
+    session_file.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n",
+        encoding="utf-8",
+    )
+
+    adapter = get_provider_adapter("codex")
+    parsed = adapter.parse_session_file(session_file, source_dir)
+
+    assert parsed.session_id == "child-session"
+    assert parsed.provider_session_id == "child-session"
+    assert parsed.cwd == "/tmp/project"
+    assert parsed.user_messages == ["Child task."]
+
+
 def test_claude_code_adapter_defaults_and_filters_primary_session_files(
     tmp_path: Path,
 ) -> None:
@@ -194,8 +281,7 @@ def test_claude_code_adapter_parses_conservative_session_fixture(tmp_path: Path)
         },
     ]
     session_file.write_text(
-        "\n".join(json.dumps(record) for record in records)
-        + "\n",
+        "\n".join(json.dumps(record) for record in records) + "\n",
         encoding="utf-8",
     )
 
