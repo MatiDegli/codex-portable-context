@@ -648,9 +648,9 @@ def render_session_reader(
           <a href="{_escape_attr(handoff_json_rel)}">JSON handoff</a>
         </div>
         <p class="note">
-          If the handoff bundle has not been generated yet, create it with
-          <code>codex-session-handoff {session_id[:8]}</code> or
-          <code>codex-session-handoff --latest</code>.
+          If the handoff bundle has not been generated yet, create it from the repo root with
+          <code>./.venv/bin/codex-session-handoff {session_id[:8]}</code> or
+          <code>./.venv/bin/codex-session-handoff --latest</code>.
         </p>
         {restart_prompt_html}
       </aside>

@@ -76,7 +76,8 @@ def test_export_mirror_writes_contract_files_and_reuses_state(tmp_path: Path) ->
     assert "Jump to raw metadata" in reader_text
     assert "Raw transcript Markdown" in reader_text
     assert "Handoff Markdown" in reader_text
-    assert "codex-session-handoff session-" in reader_text
+    assert "./.venv/bin/codex-session-handoff session-" in reader_text
+    assert "./.venv/bin/codex-session-handoff --latest" in reader_text
     assert "Please mirror /home/tester/project" in reader_text
 
 
